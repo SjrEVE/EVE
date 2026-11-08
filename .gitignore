@@ -1,0 +1,29 @@
+# proprietary / cục bộ — không push
+bus/
+logs/
+*.log
+ui_dump.json
+super.debug.json
+debug.json
+
+# python
+__pycache__/
+*.pyc
+.venv/
+
+# vendor code lớn (clone riêng nếu cần — xem README phần Credits)
+vendor/
+
+# dist build artifacts (zip + embedded python) — tạo lại bằng lệnh trong docs
+dist/*/python/
+dist/*.zip
+
+# OS
+Thumbs.db
+.DS_Store
+
+README.md
+
+
+handoff/
+

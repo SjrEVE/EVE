@@ -1,0 +1,205 @@
+"""Control layer — biến quyết định thành keybind THẬT của EVE + VERIFY kết quả.
+
+Mọi keybind ở đây lấy từ UniWiki "Keyboard controls" (Havoc 21.06, dump 2026-11-07):
+
+Combat:      Q approach · W orbit · E keep-at-range · S warp-to · A align
+             D dock/jump/gate · Ctrl+click lock · Ctrl+Shift unlock · Ctrl+Space stop
+             Alt+Space focus overview (chơi bàn phím được từ overview)
+Modules:     F1-F8 high · Alt-F1..8 mid · Ctrl-F1..8 low · Ctrl+R reload
+             Shift+F1..8 overheat high · Ctrl+Shift+F1..8 overheat low
+Drones:      Shift+F launch · F engage · Shift+Alt+R return&orbit · Shift+R return bay
+Camera/UI:   Ctrl+D tactical overlay · Esc đóng dialog · Enter confirm (unmodifiable)
+
+Mỗi action = 1 ActionSpec: steps(input cần bấm) + verify(cách check game đã nhận
+qua eye) + retry policy. VERIFY là khác biệt giữa bot biết nó vừa làm gì và script gà.
+"""
+from __future__ import annotations
+
+import time
+from dataclasses import dataclass, field
+from typing import Any, Callable
+
+from . import input as inp
+
+
+@dataclass
+class ActionSpec:
+    name: str
+    steps: list[dict[str, Any]]              # {"do":"combo","mods":[...],"key":"F1"} | {"do":"click","at":(x,y)} | {"do":"wait","s":1.0}
+    verify: Callable[[Any], bool] | None = None   # eye -> bool; None = trust
+    retry_max: int = 1                        # số lần bấm lại nếu verify fail
+    verify_wait: float = 1.0                  # đợi bao lâu sau bấm trước khi check
+
+
+def _run_steps(steps: list[dict[str, Any]], dry: bool) -> list[dict[str, Any]]:
+    log = []
+    for st in steps:
+        kind = st["do"]
+        if kind == "combo":
+            log.append(inp.send_combo(st.get("mods", ()), st["key"], dry_run=dry))
+        elif kind == "click":
+            log.append(inp.send_click(*st["at"], dry_run=dry))
+        elif kind == "wait":
+            if not dry:
+                time.sleep(st["s"])
+            log.append({"waited": st["s"], "dry": dry})
+        elif kind == "type":
+            log.append(inp.type_text(st["text"], dry_run=dry))
+        elif kind == "hold_ctrl_down":
+            if not dry:
+                import ctypes
+                ctypes.windll.user32.keybd_event(0x11, 0, 0, 0)   # VK_CONTROL down
+            log.append({"hold": "ctrl_down", "dry": dry})
+        elif kind == "hold_ctrl_up":
+            if not dry:
+                import ctypes
+                ctypes.windll.user32.keybd_event(0x11, 0, 2, 0)   # VK_CONTROL up
+            log.append({"hold": "ctrl_up", "dry": dry})
+    return log
+
+
+def execute(spec: ActionSpec, eye: Any = None, dry: bool = True) -> dict[str, Any]:
+    """Chạy action + verify + retry. dry=True: không bấm phím thật nhưng VẪN chạy
+    verify (để test được retry logic và verify functions)."""
+    attempts = 0
+    verified = spec.verify is None      # không có verify → coi như ok ngay
+    input_log: list[dict[str, Any]] = []
+    while attempts <= spec.retry_max:
+        attempts += 1
+        input_log += _run_steps(spec.steps, dry)
+        if spec.verify is None:
+            verified = True
+            break
+        if not dry:
+            time.sleep(spec.verify_wait)
+        if eye is not None and spec.verify(eye):
+            verified = True
+            break
+    return {"ok": verified, "attempts": attempts, "input_log": input_log, "verified": verified}
+
+
+# ---------------- Action catalog (keybind thật) ----------------
+
+def act_approach(target_xy: tuple[int, int] | None = None) -> ActionSpec:
+    """Q trên target đang chọn. Nếu có tọa độ overview entry → click chọn trước."""
+    steps = []
+    if target_xy:
+        steps.append({"do": "click", "at": target_xy})
+    steps.append({"do": "combo", "mods": [], "key": "Q"})
+    return ActionSpec("approach", steps)
+
+
+def act_orbit(target_xy: tuple[int, int] | None, distance_km: float) -> ActionSpec:
+    """W + nhập khoảng cách (dialog km) — orbit thật của EVE là W→gõ số→Enter.
+    Chọn target trước nếu có tọa độ."""
+    steps = []
+    if target_xy:
+        steps.append({"do": "click", "at": target_xy})
+    steps += [
+        {"do": "combo", "mods": [], "key": "W"},
+        {"do": "wait", "s": 0.5},
+        {"do": "type", "text": str(int(distance_km))},
+        {"do": "combo", "mods": [], "key": "ENTER"},
+    ]
+    return ActionSpec("orbit", steps)
+
+
+def act_keep_range(target_xy: tuple[int, int] | None, distance_km: float) -> ActionSpec:
+    """E + nhập khoảng cách."""
+    steps = []
+    if target_xy:
+        steps.append({"do": "click", "at": target_xy})
+    steps += [
+        {"do": "combo", "mods": [], "key": "E"},
+        {"do": "wait", "s": 0.5},
+        {"do": "type", "text": str(int(distance_km))},
+        {"do": "combo", "mods": [], "key": "ENTER"},
+    ]
+    return ActionSpec("keep_range", steps)
+
+
+def act_lock(entry_xy: tuple[int, int]) -> ActionSpec:
+    """Ctrl+click entry overview = lock (keybind 'Lock target': Ctrl).
+    Sequence: keydown Ctrl → click entry → keyup Ctrl → verify qua eye.
+    (P0-3 issue #1: click+Q là SAI — Q = approach.)"""
+    steps = [
+        {"do": "hold_ctrl_down"},          # keydown Ctrl
+        {"do": "click", "at": entry_xy},   # click giữ Ctrl
+        {"do": "hold_ctrl_up"},            # keyup Ctrl
+    ]
+    # verify: eye có ActiveItem (selected item window xuất hiện khi có selection)
+    return ActionSpec("lock", steps, verify=_verify_locked, retry_max=2, verify_wait=1.0)
+
+
+def _verify_locked(eye) -> bool:
+    """Eye check: ActiveItem (selected item window) tồn tại = có selection."""
+    try:
+        return len(eye._find_by_type("ActiveItem", select_many=False)) > 0
+    except Exception:  # noqa: BLE001 — eye lỗi = không verify được → coi như fail
+        return False
+
+
+def act_module(slot: int, rack: str = "high", enable: bool = True) -> ActionSpec:
+    """F1-F8 (high) / Alt-F (mid) / Ctrl-F (low). Toggle nên dùng enable biết trạng thái
+    qua eye (module_buttons isActive) — bot không bấm mù."""
+    key = f"F{slot}"
+    mods = {"high": (), "mid": ("alt",), "low": ("ctrl",)}[rack]
+    return ActionSpec(f"module_{rack}_{slot}", [{"do": "combo", "mods": list(mods), "key": key}])
+
+
+def act_overheat(slot: int, rack: str = "high") -> ActionSpec:
+    key = f"F{slot}"
+    mods = {"high": ("shift",), "mid": ("alt", "shift"), "low": ("ctrl", "shift")}[rack]
+    return ActionSpec(f"overheat_{rack}_{slot}", [{"do": "combo", "mods": list(mods), "key": key}])
+
+
+def act_reload() -> ActionSpec:
+    """Ctrl+R reload ammo (module đang chọn)."""
+    return ActionSpec("reload", [{"do": "combo", "mods": ["ctrl"], "key": "R"}])
+
+
+def act_stop() -> ActionSpec:
+    """Ctrl+Space dừng tàu."""
+    return ActionSpec("stop", [{"do": "combo", "mods": ["ctrl"], "key": "SPACE"}])
+
+
+def act_gate_jump(gate_xy: tuple[int, int]) -> ActionSpec:
+    """D tại gate (Dock/Jump/Activate gate) — click gate trước rồi D."""
+    return ActionSpec("gate", [{"do": "click", "at": gate_xy},
+                               {"do": "combo", "mods": [], "key": "D"}])
+
+
+def act_dock(station_xy: tuple[int, int]) -> ActionSpec:
+    return ActionSpec("dock", [{"do": "click", "at": station_xy},
+                               {"do": "combo", "mods": [], "key": "D"}])
+
+
+def act_undock() -> ActionSpec:
+    """Undock = click nút Undock (không có keybind mặc định) — eye phải tìm node."""
+    return ActionSpec("undock", [{"do": "click", "at": (0, 0)}])   # xy do eye cung cấp
+
+
+def act_launch_drones() -> ActionSpec:
+    """Shift+F launch drones từ bay."""
+    return ActionSpec("launch_drones", [{"do": "combo", "mods": ["shift"], "key": "F"}])
+
+
+def act_drones_engage() -> ActionSpec:
+    """F = all drones engage target đang lock."""
+    return ActionSpec("drones_engage", [{"do": "combo", "mods": [], "key": "F"}])
+
+
+def act_drones_return() -> ActionSpec:
+    """Shift+R return to drone bay (sau đó đợi drone bay về trước khi warp)."""
+    return ActionSpec("drones_return", [{"do": "combo", "mods": ["shift"], "key": "R"}],
+                      retry_max=0)
+
+
+def act_confirm() -> ActionSpec:
+    """Enter confirm dialog (unmodifiable keybind)."""
+    return ActionSpec("confirm", [{"do": "combo", "mods": [], "key": "ENTER"}])
+
+
+def act_dismiss() -> ActionSpec:
+    """Esc đóng dialog."""
+    return ActionSpec("dismiss", [{"do": "combo", "mods": [], "key": "ESC"}])
