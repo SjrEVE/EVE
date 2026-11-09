@@ -166,4 +166,16 @@ ok("g5_route_jumps_next_system", rr == {"destination": "Nourvukaiken", "next_sys
 ok("g5_route_no_destination", MissionEye(ema).route()["destination"] is None,
    str(MissionEye(ema).route()))
 
+# ---------------- G6 GROUND: menu stargate trong space (dump thật g6_sec_None_174059) ----------------
+# DLL decode sai type entry (PyColor/Sprite/PyChildrenList) -> nhận diện theo _name='context_menu_*'
+from fila_bot.travel import pick_menu_entry  # noqa: E402
+
+emg = Eye.__new__(Eye)
+for _k in ("root", "_pos", "_pos_root"):
+    setattr(emg, _k, None)
+emg.root = json.loads((ROOT / "tests" / "fixtures" / "ui_tree_stargate_menu.json").read_text(encoding="utf-8"))
+gents = [(x["text"], x["center"]) for m in emg.context_menus() for x in m["entries"]]
+ok("g6_stargate_menu_9_entries", len(gents) == 9 and gents[2] == ("Jump", (227, 327)), str(gents))
+ok("g6_pick_jump", pick_menu_entry(gents) == ("Jump", (227, 327)), str(pick_menu_entry(gents)))
+
 print(f"=> {PASS} test PASS tổng (mission + station + menu)")

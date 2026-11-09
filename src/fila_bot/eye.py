@@ -403,23 +403,31 @@ class Eye:
         → TextBody text hiển thị. Menu nhiều cấp = nhiều ContextMenu trong cây
         (cấp con nằm trong layer l_menu, toạ độ tuyệt đối đọc qua abs_center).
         """
+        # Ground G6 2026-11-09 (dumps/g6_sec_None_174059.json, menu stargate trong space):
+        # DLL decode SAI type cua entry (PyColor/Sprite/PyChildrenList thay vi MenuEntryView)
+        # va label con cung sai type. Nhan dien entry bang _name='context_menu_<Text>'
+        # (on dinh), text = _setText dau tien trong subtree (khong loc theo type).
         out: list[dict[str, Any]] = []
         for menu in self._find_by_type("ContextMenu", select_many=True):
             entries = []
             for n in self.walk(menu):
-                if n.get("type") != "MenuEntryView":
+                name = (n.get("attrs", {}) or {}).get("_name")
+                is_entry = n.get("type") == "MenuEntryView" or (
+                    isinstance(name, str) and name.startswith("context_menu_"))
+                if not is_entry:
                     continue
                 text = ""
                 for d in self.walk(n):
-                    if d.get("type") in ("TextBody", "Label", "EveLabelSmall", "EveLabelMedium"):
-                        txt = (d.get("attrs", {}) or {}).get("_setText") \
-                            or (d.get("attrs", {}) or {}).get("_text")
-                        if isinstance(txt, str) and txt.strip():
-                            text = txt.strip()
-                            break
-                entries.append({"text": text,
-                                "name": (n.get("attrs", {}) or {}).get("_name"),
-                                "center": self.abs_center(n)})
+                    if d is n:
+                        continue
+                    da = d.get("attrs", {}) or {}
+                    txt = da.get("_setText") or da.get("_text")
+                    if isinstance(txt, str) and txt.strip():
+                        text = txt.strip()
+                        break
+                if not text and isinstance(name, str) and name.startswith("context_menu_"):
+                    text = name[len("context_menu_"):]
+                entries.append({"text": text, "name": name, "center": self.abs_center(n)})
             out.append({"center": self.abs_center(menu), "entries": entries})
         return out
 
