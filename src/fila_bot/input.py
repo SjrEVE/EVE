@@ -106,6 +106,17 @@ def send_key(code: int, dry_run: bool = False, humanize: bool = True) -> dict[st
     return {"ok": True, "code": code, "dry": False}
 
 
+def hover(x: int, y: int, dry_run: bool = False) -> dict[str, Any]:
+    """Đưa chuột tới (x,y) KHÔNG click — dùng để mở submenu (ground 2026-11-09:
+    context menu nhiều cấp chỉ bung khi hover, click sẽ chọn luôn entry cấp 1)."""
+    if dry_run:
+        return {"ok": True, "x": x, "y": y, "hover": True, "dry": True}
+    import ctypes
+
+    ctypes.windll.user32.SetCursorPos(int(x), int(y))
+    return {"ok": True, "x": x, "y": y, "hover": True, "dry": False}
+
+
 def type_text(text: str, dry_run: bool = False, humanize: bool = True) -> dict[str, Any]:
     """Gõ chuỗi số/chữ (dialog orbit/keep distance). Chỉ digit + chữ không dấu."""
     if dry_run:

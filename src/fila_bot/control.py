@@ -73,6 +73,14 @@ def execute(spec: ActionSpec, eye: Any = None, dry: bool = True,
     verified = spec.verify is None      # không có verify → coi như ok ngay
     input_log: list[dict[str, Any]] = []
     steps = _to_screen_steps(spec.steps, win, dry)
+
+    if not dry:
+        blocked = _blocked_by_overlay(steps, win)
+        if blocked:
+            # KHÔNG bấm: bấm vào cửa sổ khác = hành động sai + báo ok giả
+            return {"ok": False, "attempts": 0, "input_log": [], "verified": False,
+                    "fail": blocked}
+
     while attempts <= spec.retry_max:
         attempts += 1
         input_log += _run_steps(steps, dry)
@@ -100,6 +108,24 @@ def _to_screen_steps(steps: list[dict[str, Any]], win: dict[str, Any] | None,
         else:
             out.append(st)
     return out
+
+
+def _blocked_by_overlay(steps: list[dict[str, Any]], win: dict[str, Any] | None) -> str | None:
+    """Điểm click có bị cửa sổ khác che không? Trả lý do hoặc None.
+
+    Ground 2026-11-09: cửa sổ Hermes che nửa phải EVE → click vào nút Undock
+    rơi vào Hermes, game không nhận, mà `execute` vẫn trả ok=True (nói dối).
+    Fail-closed: bị che → KHÔNG bấm, trả lý do.
+    """
+    if win is None:
+        return None
+    from .win import is_reachable
+    for st in steps:
+        if st.get("do") in ("click", "right_click") and st.get("at"):
+            if not is_reachable(win, st["at"]):
+                return (f"điểm {st['at']} bị cửa sổ khác che (không phải EVE) — "
+                        "không bấm; đưa cửa sổ EVE lên trước")
+    return None
 
 
 # ---------------- Action catalog (keybind thật) ----------------
@@ -255,9 +281,14 @@ def act_warp_route() -> ActionSpec:
 # bấm entry cấp con. KHÔNG bấm mù: mỗi bước phải đọc lại UI tree để lấy toạ độ entry thật.
 
 def act_open_context_menu(xy: tuple[int, int]) -> ActionSpec:
-    """Chuột phải tại toạ độ (overview entry / object) để mở context menu."""
+    """Chuột phải tại toạ độ (overview entry / object) để mở context menu.
+
+    Ground 2026-11-09: menu KHÔNG hiện ngay — đo được 1-2 s sau right-click.
+    `wait 0.6` cũ quá ngắn → đọc UI tree thấy 0 menu. Caller phải POLL (# xem
+    eye.wait_menu()) thay vì tin vào wait cố định; ở đây để 1.2 s làm mức tối thiểu.
+    """
     return ActionSpec("open_menu", [{"do": "right_click", "at": xy},
-                                    {"do": "wait", "s": 0.6}])
+                                    {"do": "wait", "s": 1.2}])
 
 
 def act_menu_entry(entry_xy: tuple[int, int]) -> ActionSpec:
@@ -266,5 +297,17 @@ def act_menu_entry(entry_xy: tuple[int, int]) -> ActionSpec:
 
 
 def act_dismiss() -> ActionSpec:
-    """Esc đóng dialog."""
-    return ActionSpec("dismiss", [{"do": "combo", "mods": [], "key": "ESC"}])
+    """Đóng context menu / popup.
+
+    ⚠️ Ground 2026-11-09: **ESC trong EVE mở Settings window**, không đóng menu
+    (đã thử: ESC → mất ShipUI + overview, hiện Settings). Vì vậy KHÔNG dùng ESC
+    để đóng menu. Cách đúng: click chuột trái ra vùng trống của game.
+    Caller phải truyền toạ độ vùng trống đã verify (không có UI node ở đó).
+    """
+    raise NotImplementedError(
+        "dismiss: KHÔNG dùng ESC (ESC mở Settings). Dùng act_click_empty(xy)")
+
+
+def act_click_empty(xy: tuple[int, int]) -> ActionSpec:
+    """Click vào vùng trống trong game để đóng menu (thay ESC)."""
+    return ActionSpec("dismiss_menu", [{"do": "click", "at": xy}])

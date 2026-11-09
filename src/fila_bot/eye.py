@@ -255,10 +255,15 @@ class Eye:
 
     def _overview_columns(self, win: dict[str, Any],
                           first_entry: dict[str, Any]) -> list[tuple[int, str]]:
-        """Cột overview: [(tâm_x, tên_cột)] — chỉ lấy header EveLabelSmall cùng hàng
-        với entry đầu (ground 2026-11-09: header y=252, entry y=264→276)."""
+        """Cột overview: [(tâm_x, tên_cột)] từ hàng header NGAY TRÊN entry đầu.
+
+        Ground 2026-11-09: header là EveLabelSmall (_setText), luôn nằm TRÊN entry
+        đầu tiên. Khoảng cách thay đổi theo scroll — KHÔNG hard-code 40px như bản
+        cũ (header y=252, entry y=276 lúc đầu; sau khi scroll entry y=324 → trượt).
+        Cách đúng: gom mọi label có y < y_entry, lấy nhóm có y lớn nhất (gần nhất).
+        """
         _, y_entry = self.abs_center(first_entry)
-        cols: list[tuple[int, str]] = []
+        candidates: list[tuple[int, int, str]] = []
         for n in self.walk(win):
             if n.get("type") != "EveLabelSmall":
                 continue
@@ -266,9 +271,13 @@ class Eye:
             if not isinstance(txt, str) or not txt.strip():
                 continue
             x, y = self.abs_center(n)
-            if y_entry - 40 <= y <= y_entry:
-                cols.append((x, txt.strip()))
-        cols.sort(key=lambda t: t[0])
+            if y < y_entry:
+                candidates.append((y, x, txt.strip()))
+        if not candidates:
+            return []
+        header_y = max(c[0] for c in candidates)
+        cols = [(x, t) for y, x, t in candidates if y == header_y]
+        cols.sort(key=lambda c: c[0])
         return cols
 
     @staticmethod
@@ -422,4 +431,70 @@ class Eye:
                 t = (e.get("text") or "").strip().lower()
                 if (t == want) if exact else (want and want in t):
                     return e["center"]
+        return None
+
+    def empty_point(self) -> tuple[int, int]:
+        """Toạ độ vùng trống an toàn trong client area (để click đóng menu).
+
+        Ground 2026-11-09: KHÔNG dùng ESC (ESC mở Settings window trong EVE).
+        Chọn điểm giữa-dưới màn hình nơi không có node UI nào phủ, kiểm bằng cách
+        duyệt toàn bộ node có _display và loại vùng phủ của chúng.
+        """
+        win = self._find_by_type("ShipUI", select_many=False)
+        w = (win[0].get("attrs", {}) or {}).get("_displayWidth", 1280) if win else 1280
+        h = (win[0].get("attrs", {}) or {}).get("_displayHeight", 1018) if win else 1018
+
+        # vùng bị phủ bởi window/container lớn (bỏ qua HUD nhỏ ở giữa)
+        covered: list[tuple[int, int, int, int]] = []
+        for n in self.walk(self.root or {}):
+            a = n.get("attrs", {}) or {}
+            if a.get("_display") is False:
+                continue
+            nw, nh = int(a.get("_displayWidth") or 0), int(a.get("_displayHeight") or 0)
+            if nw * nh < 40000:            # bỏ node nhỏ (icon, label)
+                continue
+            x, y = self.abs_center_x_y(n)
+            covered.append((x, y, nw, nh))
+
+        # quét lưới: chọn điểm không nằm trong vùng phủ nào
+        for gy in range(int(h * 0.85), int(h * 0.30), -40):
+            for gx in range(int(w * 0.12), int(w * 0.55), 40):
+                if not any(cx <= gx <= cx + cw and cy <= gy <= cy + ch
+                           for cx, cy, cw, ch in covered):
+                    return (gx, gy)
+        return (int(w * 0.25), int(h * 0.75))
+
+    def abs_center_x_y(self, node: dict[str, Any]) -> tuple[int, int]:
+        """Góc trên-trái tuyệt đối của node (khác abs_center = tâm)."""
+        self._ensure_pos()
+        return (self._pos or {}).get(id(node), (0, 0))
+
+    def wait_menu(self, timeout_s: float = 5.0, poll_s: float = 0.35) -> bool:
+        """Chờ menu chuột phải hiện (ground: 1-2 s sau right-click, không tức thì).
+
+        Đọc lại UI tree theo chu kỳ; trả True khi có ít nhất 1 ContextMenu.
+        KHÔNG dùng sleep cố định — chậm/mất menu là nguyên nhân click mù.
+        """
+        import time as _t
+        deadline = _t.time() + timeout_s
+        while _t.time() < deadline:
+            self.refresh()
+            if self.context_menus():
+                return True
+            _t.sleep(poll_s)
+        return False
+
+    def wait_entry(self, text: str, timeout_s: float = 5.0,
+                   poll_s: float = 0.35) -> tuple[int, int] | None:
+        """Chờ entry có text xuất hiện trong menu đang mở → toạ độ (hoặc None)."""
+        import time as _t
+        want = text.strip().lower()
+        deadline = _t.time() + timeout_s
+        while _t.time() < deadline:
+            self.refresh()
+            for menu in self.context_menus():
+                for e in menu["entries"]:
+                    if want in (e.get("text") or "").strip().lower():
+                        return e["center"]
+            _t.sleep(poll_s)
         return None

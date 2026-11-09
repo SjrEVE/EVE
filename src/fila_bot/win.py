@@ -10,6 +10,7 @@ Không dùng toạ độ đoán: mọi offset đọc từ Win32 (GetClientRect +
 from __future__ import annotations
 
 import ctypes
+import time
 from ctypes import wintypes as wt
 from typing import Any
 
@@ -88,9 +89,64 @@ def client_to_screen(win: dict[str, Any], xy: tuple[int, int]) -> tuple[int, int
     return int(xy[0] + ox), int(xy[1] + oy)
 
 
-def focus(win: dict[str, Any]) -> None:
-    """Đưa cửa sổ game lên trước (click chỉ ăn khi cửa sổ active)."""
+def focus(win: dict[str, Any]) -> bool:
+    """Đưa cửa sổ game lên trước — SetForegroundWindow TRẦN KHÔNG ĐỦ.
+
+    Windows chặn SetForegroundWindow từ process không phải foreground (ground
+    2026-11-09: cửa sổ Hermes che EVE, foreground vẫn là Hermes → click rơi vào Hermes).
+    Cách đúng: AttachThreadInput vào thread đang giữ foreground rồi mới SetForegroundWindow.
+    Trả True nếu EVE thực sự thành foreground.
+    """
     user32 = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
     hwnd = win["hwnd"]
-    user32.ShowWindow(hwnd, 9)            # SW_RESTORE
-    user32.SetForegroundWindow(hwnd)
+
+    user32.ShowWindow(hwnd, 9)                       # SW_RESTORE
+    fg = user32.GetForegroundWindow()
+    if fg == hwnd:
+        return True
+
+    fg_thread = user32.GetWindowThreadProcessId(fg, None)
+    my_thread = kernel32.GetCurrentThreadId()
+    attached = False
+    if fg_thread and fg_thread != my_thread:
+        attached = bool(user32.AttachThreadInput(my_thread, fg_thread, True))
+    try:
+        user32.BringWindowToTop(hwnd)
+        user32.SetForegroundWindow(hwnd)
+        user32.SetActiveWindow(hwnd)
+    finally:
+        if attached:
+            user32.AttachThreadInput(my_thread, fg_thread, False)
+
+    time.sleep(0.25)
+    return user32.GetForegroundWindow() == hwnd
+
+
+def point_owner(x: int, y: int) -> tuple[int, int]:
+    """(hwnd, pid) của cửa sổ THỰC SỰ nằm dưới điểm (x,y) trên màn hình.
+
+    Dùng để phát hiện bị che: WindowFromPoint trả cửa sổ trên cùng tại điểm đó,
+    sau đó leo lên root owner (cửa sổ con vẫn thuộc pid game).
+    """
+    user32 = ctypes.windll.user32
+    pt = wt.POINT(int(x), int(y))
+    hwnd = user32.WindowFromPoint(pt)
+    if not hwnd:
+        return 0, 0
+    # leo lên root owner
+    root = hwnd
+    while True:
+        parent = user32.GetAncestor(root, 2)   # GA_ROOT
+        if not parent or parent == root:
+            break
+        root = parent
+    pid = wt.DWORD()
+    user32.GetWindowThreadProcessId(root, ctypes.byref(pid))
+    return root, pid.value
+
+
+def is_reachable(win: dict[str, Any], screen_xy: tuple[int, int]) -> bool:
+    """Điểm (toạ độ màn hình) có thực sự thuộc cửa sổ game và không bị che?"""
+    _, pid = point_owner(*screen_xy)
+    return pid == win["pid"]

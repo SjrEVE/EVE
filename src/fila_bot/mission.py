@@ -309,20 +309,34 @@ class MissionRunner:
     def next_actions(self) -> list[dict[str, Any]]:
         st = self.me.state()
         acts: list[dict[str, Any]] = []
+        eye = self.me.eye
 
-        # Menu đang mở → ưu tiên xử menu (nếu không sẽ bấm loạn lên UI khác)
-        menus = self.me.eye.context_menus()
-        if menus and self.menu_plan:
+        # Menu đang mở → ưu tiên xử menu (nếu không sẽ bấm loạn lên UI khác).
+        # Ground 2026-11-09: menu hiện sau 1-2 s, nên phải POLL chứ không sleep cứng.
+        menus = eye.context_menus()
+        if menus:
+            # menu mở mà không có kế hoạch → đóng cho sạch (Esc), tránh bấm nhầm
+            if not self.menu_plan:
+                # KHÔNG dùng ESC (mở Settings). Click vùng trống để đóng.
+                return [{"do": "dismiss_menu", "at": eye.empty_point(),
+                         "why": "menu mở ngoài kế hoạch — click vùng trống để đóng"}]
             name, sub = self.menu_plan[0]
             if sub:
-                xy = self.me.eye.menu_entry_xy(sub, exact=False)
+                xy = eye.menu_entry_xy(sub, exact=False)
                 if xy is None:
-                    return [{"do": "hover_menu", "text": name,
-                             "why": f"cần mở submenu '{sub}' — hover '{name}' rồi đọc lại"}]
+                    # cần hover cấp 1 để submenu bung ra
+                    parent = eye.menu_entry_xy(name, exact=False)
+                    if parent is None:
+                        self.menu_plan.clear()
+                        return [{"do": "blocked",
+                                 "why": f"menu mở nhưng không có '{name}'",
+                                 "needs": "kiểm tra lại entry menu"}]
+                    return [{"do": "hover_menu", "text": name, "at": parent,
+                             "why": f"hover '{name}' để submenu '{sub}' bung ra"}]
                 self.menu_plan.pop(0)
                 return [{"do": "menu_entry", "text": sub, "at": xy,
                          "why": "submenu entry đọc từ ContextMenu"}]
-            xy = self.me.eye.menu_entry_xy(name, exact=False)
+            xy = eye.menu_entry_xy(name, exact=False)
             if xy is None:
                 self.menu_plan.clear()
                 return [{"do": "blocked",

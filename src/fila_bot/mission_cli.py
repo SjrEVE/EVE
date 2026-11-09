@@ -105,14 +105,22 @@ def cmd_run(args) -> int:
                 r = ctl.execute(ctl.act_menu_entry(at), dry=dry, win=win)
                 print(f"menu_entry '{a.get('text')}':", r.get("ok"))
                 did = True
+            elif name == "dismiss_menu":
+                at = a.get("at") or e.empty_point()
+                r = ctl.execute(ctl.act_click_empty(at), dry=dry, win=win)
+                print(f"dismiss_menu at {at}:", r.get("ok"))
+                did = True
             elif name == "hover_menu":
-                # hover để submenu bung ra; dùng click nhẹ vào chính entry cấp 1
-                xy = e.menu_entry_xy(a.get("text") or "", exact=False)
-                if xy is None:
-                    print(f"BLOCKED: không thấy entry menu '{a.get('text')}'")
+                # hover entry cấp 1 để submenu bung ra (KHÔNG click — click sẽ chọn luôn)
+                at = a.get("at")
+                if not at:
+                    print("BLOCKED: hover_menu thiếu toạ độ")
                     continue
-                r = ctl.execute(ctl.act_menu_entry(xy), dry=dry, win=win)
-                print(f"hover_menu '{a.get('text')}':", r.get("ok"))
+                from fila_bot.win import client_to_screen
+                sx, sy = client_to_screen(win, at) if win else at
+                ctl.inp.hover(sx, sy, dry_run=dry)
+                print(f"hover_menu '{a.get('text')}' at {at}")
+                time.sleep(0.8)
                 did = True
             elif name in ("warp_to", "warp_route"):
                 label = a.get("label")
