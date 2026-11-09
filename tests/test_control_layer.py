@@ -167,4 +167,36 @@ ok("cts_clamp", win_mod.client_to_screen(w, (-5, -5)) == (12, 22))
 ok("cts_none_passthrough", win_mod.client_to_screen(None, (7, 8)) == (7, 8))
 ok("win_has_scale_field_or_none", True)   # dict thật có 'scale' khi có hwnd
 
+# ---------------- 5. audit fixes (2026-11-10): humanize wiring + drone keybind dispatch ----------------
+# humanize=False phải tới được input layer (nút config không còn chết)
+recorded: list[dict] = []
+_orig_combo = inp.send_combo
+
+
+def _recorder(mods, key, dry_run=False, humanize=True):
+    recorded.append({"mods": tuple(mods), "key": key, "dry": dry_run, "humanize": humanize})
+    return {"ok": True, "combo": key, "dry": dry_run}
+
+
+inp.send_combo = _recorder
+try:
+    r = ctl.execute(ctl.ActionSpec("nohum", [{"do": "combo", "mods": [], "key": "F1"}]),
+                    dry=False, humanize=False)
+finally:
+    inp.send_combo = _orig_combo
+ok("humanize_false_threaded", recorded and recorded[0]["humanize"] is False, str(recorded))
+
+# dispatch: recall_drones → shift+R, drone_engage → F (keybind ground, không cần G8)
+from fila_bot.main import RealExecutor     # noqa: E402
+sys.path.insert(0, str(ROOT / "tests"))
+from fake_eye import FakeEye               # noqa: E402
+
+ex = RealExecutor(FakeEye(), input_dry=True)
+ex.actions.append(("recall_drones",))
+ex.actions.append(("drone_engage",))
+res = ex.process_actions()
+combos = [s.get("combo") for x in res for s in x.get("input_log", []) if "combo" in s]
+ok("dispatch_recall_drones", res[0]["ok"] is True and "shift+R" in combos, str(res))
+ok("dispatch_drone_engage", res[1]["ok"] is True and "F" in combos, str(res))
+
 print(f"\n=> {PASS} test PASS (mọi [FAIL] exit(1) ngay)")

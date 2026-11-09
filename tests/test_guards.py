@@ -10,7 +10,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from fila_bot.guards import (  # noqa: E402
     CapStarveGuard, CloudSlingGuard, DroneOutGuard, GuardManager, LootGreedGuard,
-    LoopWatchdog, OverviewEmptyGuard, PassiveSafetyGuard, PreflightGuard,
+    LoopWatchdog, MultiClientGuard, OverviewEmptyGuard, PassiveSafetyGuard, PreflightGuard,
 )
 
 PASS = 0
@@ -110,6 +110,21 @@ r = g.check(st)
 ok("death9_drift_orbit", r is not None and r["action"] == "orbit_cache", str(r))
 st["maneuver"] = "orbit"
 ok("death9_orbit_ok", g.check(st) is None, "đáng lẽ None")
+
+# DEATH #10: multibox chưa pin pid + nhiều client (Viir "UI changes 3/21/26" 2026-03)
+g10 = MultiClientGuard()
+r = g10.check({"client_windows_count": 2, "multibox_pinned": False})
+ok("death10_multi_client_mayday", r is not None and r["action"] == "mayday", str(r))
+ok("death10_warn_once", g10.check({"client_windows_count": 2,
+                                   "multibox_pinned": False}) is None)
+g10b = MultiClientGuard()
+ok("death10_pinned_ok", g10b.check({"client_windows_count": 3,
+                                    "multibox_pinned": True}) is None)
+ok("death10_single_ok", g10b.check({"client_windows_count": 1}) is None)
+ok("death10_default_ok", g10b.check({}) is None)
+mgr2 = GuardManager()
+acts2 = mgr2.check_all({"phase": "ROOM1_FIGHT", "client_windows_count": 2})
+ok("death10_in_manager", any(a.get("guard") == "multi_client" for a in acts2), str(acts2))
 
 # Manager: nhiều guard cùng bắn
 mgr = GuardManager()

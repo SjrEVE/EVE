@@ -43,52 +43,60 @@ class ActionSpec:
     fallback: "ActionSpec | None" = None      # chạy khi primary fail hết retry (merge 2026-11-10)
 
 
-def _run_steps(steps: list[dict[str, Any]], dry: bool) -> list[dict[str, Any]]:
+def _run_steps(steps: list[dict[str, Any]], dry: bool,
+               humanize: bool = True) -> list[dict[str, Any]]:
     log = []
     for st in steps:
         kind = st["do"]
         if kind == "combo":
-            log.append(inp.send_combo(st.get("mods", ()), st["key"], dry_run=dry))
+            log.append(inp.send_combo(st.get("mods", ()), st["key"], dry_run=dry,
+                                      humanize=humanize))
         elif kind == "click":
-            log.append(inp.send_click(*st["at"], dry_run=dry))
+            log.append(inp.send_click(*st["at"], dry_run=dry, humanize=humanize))
         elif kind == "right_click":
-            log.append(inp.send_right_click(*st["at"], dry_run=dry))
+            log.append(inp.send_right_click(*st["at"], dry_run=dry, humanize=humanize))
         elif kind == "wait":
             if not dry:
                 time.sleep(st["s"])
             log.append({"waited": st["s"], "dry": dry})
         elif kind == "type":
-            log.append(inp.type_text(st["text"], dry_run=dry))
+            log.append(inp.type_text(st["text"], dry_run=dry, humanize=humanize))
         elif kind == "key_click":
-            log.append(inp.send_key_click(st["key"], *st["at"], dry_run=dry))
+            log.append(inp.send_key_click(st["key"], *st["at"], dry_run=dry,
+                                          humanize=humanize))
         elif kind == "drag":
-            log.append(inp.send_drag(st["from"], st["to"], dry_run=dry))
+            log.append(inp.send_drag(st["from"], st["to"], dry_run=dry,
+                                     humanize=humanize))
         elif kind == "hold":
             # merge 2026-11-10: token 'ctrl_down'/'ctrl_up'... qua send_hold (scan-code
             # + _ACTIVE_HOLDS); log giữ shape cũ {"hold": token} cho test_issue1
-            inp.send_hold(st["key"], dry_run=dry)
+            inp.send_hold(st["key"], dry_run=dry, humanize=humanize)
             log.append({"hold": st["key"], "dry": dry})
         elif kind == "hover":
-            res = inp.send_hover(*st["at"], dwell_s=float(st.get("dwell_s", 0.28)),
-                                 dry_run=dry)
+            inp.send_hover(*st["at"], dwell_s=float(st.get("dwell_s", 0.28)),
+                           dry_run=dry, humanize=humanize)
             log.append({"hover": st["at"], "dwell_s": st.get("dwell_s", 0.28), "dry": dry})
         elif kind == "hold_ctrl_down":
-            inp.send_hold("ctrl_down", dry_run=dry)
+            inp.send_hold("ctrl_down", dry_run=dry, humanize=humanize)
             log.append({"hold": "ctrl_down", "dry": dry})
         elif kind == "hold_ctrl_up":
-            inp.send_hold("ctrl_up", dry_run=dry)
+            inp.send_hold("ctrl_up", dry_run=dry, humanize=humanize)
             log.append({"hold": "ctrl_up", "dry": dry})
     return log
 
 
 def execute(spec: ActionSpec, eye: Any = None, dry: bool = True,
-            win: dict[str, Any] | None = None) -> dict[str, Any]:
+            win: dict[str, Any] | None = None,
+            humanize: bool = True) -> dict[str, Any]:
     """Chạy action + verify + retry. dry=True: không bấm phím thật nhưng VẪN chạy
     verify (để test được retry logic và verify functions).
 
     win: dict từ win.find_client_window(). Có win → toạ độ client được đổi sang
     toạ độ màn hình trước khi click (BẮT BUỘC khi bấm thật, nếu không sẽ lệch
     đúng bằng title bar + viền — ground 2026-11-09).
+
+    humanize: tắt/bật jitter+lognormal (config.humanize của Boss — audit
+    2026-11-10: trước đây nút này chết vì không được truyền xuống input).
 
     Merge 2026-11-10: release_all trong finally (exception không kẹt phím) +
     spec.fallback tự chạy khi primary fail hết retry.
@@ -108,7 +116,7 @@ def execute(spec: ActionSpec, eye: Any = None, dry: bool = True,
     try:
         while attempts <= spec.retry_max:
             attempts += 1
-            input_log += _run_steps(steps, dry)
+            input_log += _run_steps(steps, dry, humanize=humanize)
             if spec.verify is None:
                 verified = True
                 break
@@ -124,7 +132,7 @@ def execute(spec: ActionSpec, eye: Any = None, dry: bool = True,
             pass
 
     if not verified and spec.fallback is not None:
-        fb = execute(spec.fallback, eye=eye, dry=dry, win=win)
+        fb = execute(spec.fallback, eye=eye, dry=dry, win=win, humanize=humanize)
         input_log += fb.get("input_log", [])
         verified = bool(fb.get("ok"))
         attempts += int(fb.get("attempts", 0))

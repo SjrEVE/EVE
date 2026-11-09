@@ -35,10 +35,16 @@ class RealExecutor:
     → REJECT rõ ràng, KHÔNG đoán tọa độ.
     """
 
-    def __init__(self, eye: Any, input_dry: bool = True, bus: Any = None) -> None:
+    def __init__(self, eye: Any, input_dry: bool = True, bus: Any = None,
+                 humanize: bool = True) -> None:
         self.eye = eye
         self.input_dry = input_dry
         self.bus = bus
+        self.humanize = humanize
+        # audit 2026-11-10 (DEATH #10 — Viir "UI changes 3/21/26"): đếm client EVE
+        # đang mở — >1 mà chưa pin pid → MultiClientGuard MAYDAY (fail-closed)
+        self.multibox_pinned = False
+        self.client_windows_count = self._count_eve_clients()
         self.actions: list[tuple] = []      # Bot ghi vào đây
         self._processed = 0
         self._results: list[dict[str, Any]] = []
@@ -65,7 +71,16 @@ class RealExecutor:
         self.last_lock_failed = False
 
     # ---- eye reading ----
+    def _count_eve_clients(self) -> int:
+        """Số client exefile.exe visible đang chạy (0 ngoài Windows/test)."""
+        try:
+            from fila_bot.win import find_all_client_windows
+            return max(1, len(find_all_client_windows()))
+        except Exception:      # noqa: BLE001 — test/non-Windows: coi như 1 client
+            return 1
+
     def refresh_from_eye(self) -> None:
+        self.client_windows_count = self._count_eve_clients()
         e = self.eye
         if hasattr(e, "dll"):
             try:
@@ -175,11 +190,11 @@ class RealExecutor:
                              "(chưa lock, hoặc overview trống) — không bấm mù")
                         continue
                     if name == "orbit":
-                        r = ctl.execute(ctl.act_orbit(xy, int(act[1])), dry=self.input_dry)
+                        r = ctl.execute(ctl.act_orbit(xy, int(act[1])), dry=self.input_dry, humanize=self.humanize)
                     elif name == "keep_range":
-                        r = ctl.execute(ctl.act_keep_range(xy, int(act[1])), dry=self.input_dry)
+                        r = ctl.execute(ctl.act_keep_range(xy, int(act[1])), dry=self.input_dry, humanize=self.humanize)
                     else:
-                        r = ctl.execute(ctl.act_approach(xy), dry=self.input_dry)
+                        r = ctl.execute(ctl.act_approach(xy), dry=self.input_dry, humanize=self.humanize)
                 # --- lock đúng Ctrl+click (P0-3) ---
                 elif name == "lock":
                     label = act[1] if len(act) > 1 else None
@@ -187,24 +202,30 @@ class RealExecutor:
                     if xy is None:
                         fail(f"entry '{label or '<đầu>'}' không thấy trong overview — không lock mù")
                         continue
-                    r = ctl.execute(ctl.act_lock(xy), dry=self.input_dry)
+                    r = ctl.execute(ctl.act_lock(xy), dry=self.input_dry, humanize=self.humanize)
                     # verify: SelectedItemWnd xuất hiện (CHỌN, không phải lock — node lock chưa ground)
                     self.last_lock_failed = not r.get("ok", False)
                 # --- module đúng rack (P0-4): action ("activate", slot, rack) ---
                 elif name == "activate":
                     slot = int(act[1])
                     rack = act[2] if len(act) > 2 else "high"
-                    r = ctl.execute(ctl.act_module(slot, rack), dry=self.input_dry)
+                    r = ctl.execute(ctl.act_module(slot, rack), dry=self.input_dry, humanize=self.humanize)
                 elif name == "deact":
                     slot = int(act[1])
                     rack = act[2] if len(act) > 2 else "high"
-                    r = ctl.execute(ctl.act_module(slot, rack), dry=self.input_dry)
+                    r = ctl.execute(ctl.act_module(slot, rack), dry=self.input_dry, humanize=self.humanize)
                 elif name == "reload":
-                    r = ctl.execute(ctl.act_reload(), dry=self.input_dry)
+                    r = ctl.execute(ctl.act_reload(), dry=self.input_dry, humanize=self.humanize)
                 elif name == "stop":
-                    r = ctl.execute(ctl.act_stop(), dry=self.input_dry)
+                    r = ctl.execute(ctl.act_stop(), dry=self.input_dry, humanize=self.humanize)
                 elif name == "confirm":
-                    r = ctl.execute(ctl.act_confirm(), dry=self.input_dry)
+                    r = ctl.execute(ctl.act_confirm(), dry=self.input_dry, humanize=self.humanize)
+                # --- drone keybind (audit 2026-11-10): Shift+R/F đã ground (UniWiki),
+                #     không cần node G8 — combat_brain phát recall_drones/drone_engage
+                elif name == "recall_drones":
+                    r = ctl.execute(ctl.act_drones_return(), dry=self.input_dry, humanize=self.humanize)
+                elif name == "drone_engage":
+                    r = ctl.execute(ctl.act_drones_engage(), dry=self.input_dry, humanize=self.humanize)
                 # --- guard actions (P0-7): power_save/disable_mwd không còn skip ---
                 elif name == "power_save":
                     # tắt prop + web (mid rack) giữ cap cho tank — spec action dạng tuple
@@ -262,6 +283,8 @@ def main() -> int:
                     help="LIVE: lỗ kháng của fit — ưu tiên diệt rat trúng lỗ")
     ap.add_argument("--no-killswitch", action="store_true",
                     help="P2-4: tắt hotkey Ctrl+Shift+Space (mặc định BẬT)")
+    ap.add_argument("--no-humanize", action="store_true",
+                    help="tắt jitter/lognormal input (mặc định BẬT — audit 2026-11-10)")
     args = ap.parse_args()
 
     bus = FileBus(args.bus_dir)
@@ -281,7 +304,8 @@ def main() -> int:
             bus.emit("FATAL", reason=f"eye init fail: {e}")
             print(f"FATAL: {e}\n→ check EVE client đang chạy + DLL đã build.", file=sys.stderr)
             return 2
-        ex = RealExecutor(eye, input_dry=not args.confirm_input, bus=bus)
+        ex = RealExecutor(eye, input_dry=not args.confirm_input, bus=bus,
+                          humanize=not args.no_humanize)
         bus.emit("BOOT", mode="live", input_dry=not args.confirm_input,
                  note="THẬT. input_dry=True → chỉ log phím, không bấm")
 

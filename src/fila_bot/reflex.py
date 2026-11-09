@@ -309,6 +309,8 @@ class Bot:
         guard_state["maneuver"] = getattr(self.ex, "maneuver", None)
         guard_state["want_loot"] = getattr(self.ex, "want_loot", False)
         guard_state["last_lock_failed"] = getattr(self.ex, "last_lock_failed", False)
+        guard_state["client_windows_count"] = getattr(self.ex, "client_windows_count", 1)
+        guard_state["multibox_pinned"] = getattr(self.ex, "multibox_pinned", False)
         for act in self.guards.check_all(guard_state):
             self._apply_guard_action(act)
         self._last_guard_action = self.ex.phase

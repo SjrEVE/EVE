@@ -260,6 +260,31 @@ class PassiveSafetyGuard(Guard):
 
 
 # ----------------------------------------------------------------
+# DEATH #10 — multibox đọc nhầm client (Viir/BotLab forum "UI changes 3/21/26",
+# 2026-03: bot nhiều client mở, check PID fail SILENT → đọc UI tree của NHẦM
+# client, bấm vào acc kia; AbyssBot dính họ hàng). Eye/DLL mình cũng chưa pin PID.
+# Guard: thấy >1 client exefile.exe mà chưa pin pid → MAYDAY (fail-closed:
+# không chạy mù khi không chắc mình đang nhìn cái nào).
+# ----------------------------------------------------------------
+class MultiClientGuard(Guard):
+    name = "multi_client"
+
+    def __init__(self) -> None:
+        self.warned = False   # warn 1 lần — lặp là storm, remedy là pin pid
+
+    def check(self, st: dict[str, Any]) -> dict[str, Any] | None:
+        count = int(st.get("client_windows_count", 1) or 1)
+        pinned = bool(st.get("multibox_pinned", False))
+        if count > 1 and not pinned and not self.warned:
+            self.warned = True
+            return {"action": "mayday",
+                    "reason": f"{count} client exefile.exe đang mở mà chưa pin pid — "
+                    "rủi ro đọc nhầm UI tree / bấm nhầm acc (bài học Viir 2026-03). "
+                    "Chạy multibox: Eye/win phải pin đúng pid từng acc"}
+        return None
+
+
+# ----------------------------------------------------------------
 # Bộ quản lý — Bot.tick gọi check_all
 # ----------------------------------------------------------------
 DEFAULT_GUARDS: list[Guard] = [
@@ -270,6 +295,7 @@ DEFAULT_GUARDS: list[Guard] = [
     DampingGuard(),
     LootGreedGuard(),
     PassiveSafetyGuard(),
+    MultiClientGuard(),
 ]
 
 
