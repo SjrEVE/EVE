@@ -67,4 +67,23 @@ inv = InventoryEye(FakeEye(node("UIRoot", children=[node("ActiveShipCargo")])))
 assert inv.items() == [] and inv.capacity() is None
 ok("window trống → items [] , capacity None")
 
+# 5. G4 GROUND: InventoryPrimary tren dump client that (TQ 2026-11-09, g4_inventory_171356)
+#    capacityText '0/932.7 m ' (DLL bien m³ thanh 'm '), ShipCargo rong ('Nothing Found').
+import json  # noqa: E402
+from fila_bot.eye import Eye  # noqa: E402
+
+FIX = Path(__file__).resolve().parent / "fixtures" / "ui_tree_inventory_cargo.json"
+real = Eye.__new__(Eye)
+for _k in ("root", "_pos", "_pos_root"):
+    setattr(real, _k, None)
+real.root = json.loads(FIX.read_text(encoding="utf-8"))
+inv = InventoryEye(real)
+assert inv.window() is not None and inv.window()["type"] == "InventoryPrimary"
+assert inv.capacity() == {"used": 0.0, "max": 932.7, "selected": None}, inv.capacity()
+assert inv.selected_container() == "ShipCargo", inv.selected_container()
+assert inv.items() == [], inv.items()
+assert inv.has_item("Encoded Data Chip") is False
+assert inv.fits(0.1) is True and inv.fits(933) is False
+ok("G4 ground: InventoryPrimary that -> capacity 0/932.7, ShipCargo rong, fits dung")
+
 print("ALL OK test_inventory")
