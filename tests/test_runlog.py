@@ -167,10 +167,11 @@ v = m.view()
 assert v["stats"]["sessions"] == 2 and v["stats"]["completed"] == 5, v["stats"]
 ok("UiModel.view() co stats")
 
-# 10. UiModel mac dinh (runs chua ton tai) khong crash
-v = UiModel().view()
+# 10. runs_dir khong ton tai -> stats zeros, khong crash (khong duoc depends repo runs/
+# vì test khác (test_ui_model) tạo session thật vào runs/ mặc định)
+v = UiModel(runs_dir=str(tmpdir() / "khong_ton_tai")).view()
 assert v["stats"]["sessions"] == 0
-ok("UiModel default runs_dir an toan")
+ok("runs_dir thieu -> stats zeros an toan")
 
 # 11. Supervisor resume PAUSED khong mo session moi
 d11 = tmpdir()

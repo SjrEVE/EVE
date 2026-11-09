@@ -15,8 +15,23 @@ _DELAY_BASE = 0.08  # giây giữa các bước input khi humanize
 
 
 def humanized_delay(base: float = _DELAY_BASE) -> float:
-    """±50% jitter quanh base — tránh nhịp máy móc đều."""
-    return base * (0.5 + random.random())
+    """Trễ kiểu sinh học: lognormal (median 1.0, sigma 0.14) kẹp [0.75, 1.45]×base.
+
+    Thay phân phối đều cũ (dễ bị nhận diện bằng chuỗi thời gian uniform) —
+    phản xạ tay người lệch phải tự nhiên. Vẫn thuần tính toán (không đụng
+    kill-switch ở đây — kill-switch do Supervisor poll mỗi tick, raise giữa
+    click-down → click-up sẽ kẹt chuột).
+    """
+    factor = random.lognormvariate(0.0, 0.14)
+    return base * max(0.75, min(1.45, factor))
+
+
+def jitter_xy(x: int, y: int, sigma_px: float = 2.2, max_offset_px: int = 5) -> tuple[int, int]:
+    """Lệch tọa độ click theo Gaussian 2 chiều quanh tâm nút — chống click trùng
+    khít tọa độ tuyệt đối. Chỉ áp cho click THẬT; dry-run giữ tọa độ chính xác."""
+    dx = int(round(max(-max_offset_px, min(max_offset_px, random.gauss(0.0, sigma_px)))))
+    dy = int(round(max(-max_offset_px, min(max_offset_px, random.gauss(0.0, sigma_px)))))
+    return (x + dx, y + dy)
 
 
 # P2-4: kill-switch — Ctrl+Shift+Space, poll bằng GetAsyncKeyState (không cài hook toàn cục,
@@ -69,6 +84,8 @@ def send_click(x: int, y: int, dry_run: bool = False, humanize: bool = True) -> 
         return {"ok": True, "x": x, "y": y, "dry": True}
     import ctypes
 
+    if humanize:
+        x, y = jitter_xy(int(x), int(y))
     user32 = ctypes.windll.user32
     user32.SetCursorPos(int(x), int(y))
     if humanize:
@@ -110,6 +127,8 @@ def send_right_click(x: int, y: int, dry_run: bool = False, humanize: bool = Tru
         return {"ok": True, "x": x, "y": y, "button": "right", "dry": True}
     import ctypes
 
+    if humanize:
+        x, y = jitter_xy(int(x), int(y))
     user32 = ctypes.windll.user32
     user32.SetCursorPos(int(x), int(y))
     if humanize:
@@ -168,6 +187,8 @@ def send_key_click(key: str, x: int, y: int, dry_run: bool = False,
         return {"ok": True, "key": key, "x": x, "y": y, "dry": True}
     import ctypes
 
+    if humanize:
+        x, y = jitter_xy(int(x), int(y))
     user32 = ctypes.windll.user32
     kv = KEY[key]
     user32.SetCursorPos(int(x), int(y))

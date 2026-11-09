@@ -59,7 +59,8 @@ class SimExecutor:
 
 class Bot:
     def __init__(self, bus: FileBus, config: Config, executor: SimExecutor | None = None,
-                 role: str = "solo") -> None:
+                 role: str = "solo", fit_type: str = "default",
+                 resist_hole: str | None = None, has_drones: bool = True) -> None:
         self.bus = bus
         self.cfg = config
         self.ex = executor or SimExecutor()
@@ -77,7 +78,10 @@ class Bot:
         from .guards import GuardManager      # local import tránh vòng
         self.guards = GuardManager()
         from .combat_brain import CombatBrain  # P1-1: rats/rooms vào vòng tick
-        self.combat = CombatBrain()
+        # fit_type="default" = SIM/test (orbit 10km cố định, không tactic);
+        # LIVE truyền fit theo tàu (vd "ab_cruiser", "mwd_shield_drone") + lỗ kháng
+        self.combat = CombatBrain(fit_type=fit_type, resist_hole=resist_hole,
+                                  has_drones=has_drones)
         # P1-2: trio role (tank/dps/logi) — solo = không dùng
         from .trio import TrioRole
         self.trio = TrioRole(role) if role in ("tank", "dps", "logi") else None
@@ -387,10 +391,14 @@ class Bot:
                 self.bus.emit("TRIO", role=self.trio.role, **act)
 
         # 3e) P1-3: drone manager — update mỗi tick, advisory (node drone chưa ground)
+        # merge 2026-11-10: thêm tín hiệu recall chủ động (mặc định tắt tới khi eye ground được)
         dst = {
             "drones_in_space": getattr(self.ex, "drones_in_space", 0),
             "drones_hp_avg": getattr(self.ex, "drones_hp_avg", 1.0),
             "redboxed": bool(getattr(self.ex, "targets", 0)),
+            "room_cleared": str(getattr(self.ex, "phase", "")).endswith("_CLEARED"),
+            "yellowboxed_anti_drone": bool(getattr(self.ex, "drones_yellowboxed", False)),
+            "suppressor_dist_km": getattr(self.ex, "suppressor_dist_km", None) or 999.0,
         }
         self.drone_state = dst
         dact = self.drones.update(dst)

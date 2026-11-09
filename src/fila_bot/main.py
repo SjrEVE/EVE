@@ -254,6 +254,12 @@ def main() -> int:
     ap.add_argument("--tick", type=float, default=None, help="ghi đè tick_interval")
     ap.add_argument("--role", choices=["solo", "tank", "dps", "logi"], default="solo",
                     help="P1-2: vai trò trio (mặc định solo)")
+    ap.add_argument("--fit-type", default="default",
+                    help="LIVE: fit tàu cho combat brain (vd ab_cruiser, "
+                         "mwd_shield_drone) — default = orbit 10km cố định")
+    ap.add_argument("--resist-hole", default=None,
+                    choices=["em", "thermal", "kinetic", "explosive"],
+                    help="LIVE: lỗ kháng của fit — ưu tiên diệt rat trúng lỗ")
     ap.add_argument("--no-killswitch", action="store_true",
                     help="P2-4: tắt hotkey Ctrl+Shift+Space (mặc định BẬT)")
     args = ap.parse_args()
@@ -279,7 +285,8 @@ def main() -> int:
         bus.emit("BOOT", mode="live", input_dry=not args.confirm_input,
                  note="THẬT. input_dry=True → chỉ log phím, không bấm")
 
-    bot = Bot(bus, cfg, ex, role=args.role)
+    bot = Bot(bus, cfg, ex, role=args.role, fit_type=args.fit_type,
+              resist_hole=args.resist_hole)
     bus.emit("BOOT", tick_interval=cfg.tick_interval,
              note="FC offline — bot chạy defaults + guards tự vệ")
 
