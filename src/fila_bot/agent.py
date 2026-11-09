@@ -79,6 +79,67 @@ class AgentEye:
                 "texts": tx, "buttons": {k: self.button_xy(k) for k in BUTTONS}}
 
 
+# ---------------- G1: AgentsPanel trong station (GROUND 2026-11-09, TQ Photon) ----------------
+# Fixture: tests/fixtures/ui_tree_agents_panel.json (Tunttaras IX - Moon 11, 3 agent Distribution)
+# AgentEntry._name = ten agent; con: EveLabelMedium nameLabel ("Ten <color..>Level N</color>"),
+# levelLabel (= division, vd "Distribution"), AgentConversationIcon _name=agentChatBtn (nut chat).
+# Nhom kha dung: label header "Available to you" / "Not available to you" (khong co _name) —
+# entry thuoc header gan nhat PHIA TREN no (so toa do y).
+_LEVEL = re.compile(r"level\s*(\d)", re.I)
+_HDR = {"available to you": True, "not available to you": False}
+
+
+def agents_panel(eye: Any) -> list[dict[str, Any]] | None:
+    """[{name, level, division, available, chat_xy}] ; None = khong thay AgentsPanel."""
+    panels = eye._find_by_type("AgentsPanel", select_many=True) or []
+    if not panels:
+        return None
+    panel = panels[0]
+    headers: list[tuple[int, bool]] = []
+    for n in eye.walk(panel):
+        a = n.get("attrs") or {}
+        t = _clean(a.get("_setText") or "").lower()
+        if t in _HDR and a.get("_name") is None:
+            xy = eye.abs_center(n)
+            if xy:
+                headers.append((xy[1], _HDR[t]))
+    headers.sort()
+    out: list[dict[str, Any]] = []
+    for ent in eye.walk(panel):
+        if ent.get("type") != "AgentEntry":
+            continue
+        a = ent.get("attrs") or {}
+        rec: dict[str, Any] = {"name": a.get("_name"), "level": None, "division": None,
+                               "available": None, "chat_xy": None}
+        for n in eye.walk(ent):
+            na = n.get("attrs") or {}
+            nm = na.get("_name")
+            if nm == "nameLabel":
+                m = _LEVEL.search(_clean(na.get("_setText") or ""))
+                rec["level"] = int(m.group(1)) if m else None
+            elif nm == "levelLabel":
+                rec["division"] = _clean(na.get("_setText") or "") or None
+            elif n.get("type") == "AgentConversationIcon":
+                rec["chat_xy"] = eye.abs_center(n)
+        exy = eye.abs_center(ent)
+        if exy and headers:
+            above = [ok for y, ok in headers if y < exy[1]]
+            rec["available"] = above[-1] if above else None
+        out.append(rec)
+    return out
+
+
+def pick_agent(agents: list[dict[str, Any]] | None, division: str,
+               max_level: int = 3) -> dict[str, Any] | None:
+    """Agent kha dung dau tien dung division, level <= max_level, co nut chat."""
+    for ag in agents or []:
+        if (ag.get("available") is True and ag.get("chat_xy")
+                and (ag.get("division") or "").lower() == division.lower()
+                and ag.get("level") is not None and ag["level"] <= max_level):
+            return ag
+    return None
+
+
 def accept_rule(offer: dict[str, Any] | None, cargo_free_m3: float | None,
                 route_hisec: bool | None) -> tuple[str, str]:
     """('accept'|'decline'|'blocked', ly do). Thieu du kien -> blocked (khong doan)."""

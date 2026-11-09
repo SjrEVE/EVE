@@ -78,4 +78,27 @@ assert accept_rule(o2, 400, True)[0] == "decline"
 assert accept_rule({"type": None}, 400, True)[0] == "blocked"
 ok("accept_rule: accept / decline (cargo, lowsec, encounter) / blocked khi thieu du kien")
 
+# 6. G1 GROUND: AgentsPanel tren dump client that (TQ 2026-11-09, Tunttaras)
+import json  # noqa: E402
+from fila_bot.agent import agents_panel, pick_agent  # noqa: E402
+from fila_bot.eye import Eye  # noqa: E402
+
+FIX = Path(__file__).resolve().parent / "fixtures" / "ui_tree_agents_panel.json"
+real = Eye.__new__(Eye)
+real.root = json.loads(FIX.read_text(encoding="utf-8"))
+ags = agents_panel(real)
+assert ags is not None and len(ags) == 3, ags
+by = {x["name"]: x for x in ags}
+assert by["Iji Kiyura"]["level"] == 1 and by["Iji Kiyura"]["division"] == "Distribution"
+assert by["Iji Kiyura"]["available"] is True and by["Iji Kiyura"]["chat_xy"] == (1258, 477)
+assert by["Ashataalen Kaitsiras"]["level"] == 2 and by["Ashataalen Kaitsiras"]["available"] is False
+assert by["Vaalemainen Suenen"]["level"] == 4 and by["Vaalemainen Suenen"]["available"] is False
+ok("G1 ground: AgentsPanel 3 agent, level/division/available/chat_xy dung dump that")
+
+assert pick_agent(ags, "Distribution")["name"] == "Iji Kiyura"
+assert pick_agent(ags, "Security") is None
+assert pick_agent(None, "Distribution") is None
+assert agents_panel(FakeEye(node("UIRoot"))) is None
+ok("pick_agent: chi agent kha dung + dung division; khong co panel -> None")
+
 print("ALL OK test_agent")
