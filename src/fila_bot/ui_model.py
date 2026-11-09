@@ -28,10 +28,30 @@ def build_supervisor(mode: str, sim: bool = True, dry: bool = True, dll: str | N
     from .reflex import Bot
     from .runner import Supervisor
 
+    if mode not in MODES:
+        raise ModeUnavailable(f"mode lạ: {mode}")
+    rel = lambda: inp.release_all(dry_run=sim or dry)  # noqa: E731
+    max_s = max_hours * 3600 if max_hours else None
     if mode != "abyss":
-        raise ModeUnavailable(
-            f"{MODE_LABELS.get(mode, mode)}: chưa làm (M3/M4) — cần ground agent/"
-            "inventory/jump/dock trên client thật (G1–G7)")
+        if not sim:
+            # Live distribution/security cần reader agent/inventory/jump/dock thật (G1–G7).
+            # Chưa ground → từ chối thẳng, không chạy giả trên client.
+            raise ModeUnavailable(
+                f"{MODE_LABELS[mode]} LIVE: chưa ground agent/inventory/jump/dock "
+                "trên client thật (G1–G7) — chỉ chạy được SIM")
+        from .sim_worlds import DistSim, SecSim
+        if mode == "distribution":
+            from .modes.distribution import DistributionMode
+            w = DistSim()
+            mode_obj: Any = DistributionMode()
+            refresh: Any = w.world
+        else:
+            from .modes.security import SecurityMode
+            w = SecSim()
+            mode_obj = SecurityMode(runner=w)
+            refresh = None
+        return Supervisor(mode_obj, execute=w.apply, refresh=refresh, release_all=rel,
+                          kill_switch=inp.kill_switch_pressed, max_session_s=max_s)
     bus = FileBus(bus_dir or Path(__file__).resolve().parents[2] / "bus")
     if sim:
         ex: Any = DemoSim()

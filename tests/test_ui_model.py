@@ -30,20 +30,38 @@ def pump(m, n=1):
         m.poll()
 
 
-# 1. mode chua lam -> FATAL ro rang, khong chay gia
+# 1. distribution/security: LIVE chua ground -> FATAL ro rang; SIM chay duoc
 for mode in ("distribution", "security"):
     try:
-        build_supervisor(mode, bus_dir=BUS)
-        raise AssertionError("phai raise")
+        build_supervisor(mode, sim=False, bus_dir=BUS)
+        raise AssertionError("live phai raise")
     except ModeUnavailable as e:
-        assert "chưa làm" in str(e)
+        assert "LIVE" in str(e) and "G1" in str(e), str(e)
     m = UiModel(factory=factory, threaded=False)
-    m.mode = mode
+    m.mode, m.sim = mode, False
     m.start()
     v = m.view()
     assert m.sup is None and v["state"] == "IDLE" and v["banner"].startswith("FATAL")
     assert v["can_start"] and v["danger"]
-ok("distribution/security chua lam -> FATAL, nut Start van bat")
+ok("distribution/security LIVE chua ground -> FATAL, nut Start van bat")
+
+# 1b. distribution SIM: chay het vong courier (khong phai bang chung client)
+m = UiModel(factory=factory, threaded=False)
+m.mode, m.sim = "distribution", True
+m.start()
+pump(m, 120)
+v = m.view()
+assert v["state"] == "RUNNING" and v["runs"] >= 1 and not v["banner"], v
+ok("distribution SIM chay >=1 mission")
+
+# 1c. security SIM: START -> RUNNING, khong crash
+m = UiModel(factory=factory, threaded=False)
+m.mode, m.sim = "security", True
+m.start()
+pump(m, 30)
+v = m.view()
+assert v["state"] == "RUNNING" and v["phase"] != "-", v
+ok("security SIM START -> RUNNING")
 
 # 2. abyss sim: START -> RUNNING, phase chay
 m = UiModel(factory=factory, threaded=False)
