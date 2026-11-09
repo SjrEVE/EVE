@@ -66,3 +66,31 @@ Không có "chỉ huy ngoài" — KHÔNG LLM, KHÔNG cloud, KHÔNG subscription.
 3. Fail-closed: thiếu ground → dừng + log, không đoán.
 4. Ưu tiên Singularity + acc rỗng. Khi SiSi khoá lịch: chủ máy quyết định chạy TQ bằng
    **acc alpha mới** (không dùng acc chính) — rủi ro EULA do chủ máy chấp nhận.
+
+## 7. Mission runner (mission.py + mission_cli.py)
+
+Chạy mission security **không** dùng chung vòng abyss: không timer 20 phút, được warp out,
+có station để dock/turn-in.
+
+```
+PYTHONPATH=src python -m fila_bot.mission_cli status    # đọc trạng thái (JSON)
+PYTHONPATH=src python -m fila_bot.mission_cli plan      # FSM quyết gì (không bấm)
+PYTHONPATH=src python -m fila_bot.mission_cli run       # dry, in action sẽ bấm
+PYTHONPATH=src python -m fila_bot.mission_cli run --go  # bấm THẬT
+```
+
+FSM: `DOCKED → (agent accept) → UNDOCK → WARP_SITE → AT_SITE/POCKET_CLEAR → gate… →
+WARP_HOME → DOCK → TURN_IN`
+
+**Phase suy từ dữ liệu thật, không đoán:**
+| Phase | Điều kiện |
+|---|---|
+| `DOCKED` | có `InfoPanelLocationInfo` station VÀ không có `ShipUI` |
+| `AT_SITE` | overview có quái **classify được bởi `rats.classify`** (không phải "có selected item" — ở Jita chọn stargate cũng có SelectedItemWnd) |
+| `POCKET_CLEAR` | không còn quái nhưng có entry "Acceleration Gate" |
+| `IN_SPACE` | ngoài space, không quái, không gate |
+
+**Fail-closed (chưa ground → BLOCKED, không bấm mù):**
+- `AgentsPanel` entry + `AgentDialogueWindow` button (Request/Accept/Complete) — cần dump khi mở agent.
+- Nút Undock: tìm theo text `Undock` trong UI tree (đã hoạt động ở station TQ).
+- `warp_to`: click entry overview đã verify TÊN rồi bấm `S` (combat shortcut mặc định).

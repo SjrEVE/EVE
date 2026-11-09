@@ -179,6 +179,11 @@ def act_undock() -> ActionSpec:
     return ActionSpec("undock", [{"do": "click", "at": (0, 0)}])   # xy do eye cung cấp
 
 
+def act_undock_at(xy: tuple[int, int]) -> ActionSpec:
+    """Undock tại toạ độ nút đã verify từ eye (tên 'Undock')."""
+    return ActionSpec("undock", [{"do": "click", "at": xy}])
+
+
 def act_launch_drones() -> ActionSpec:
     """Shift+F launch drones từ bay."""
     return ActionSpec("launch_drones", [{"do": "combo", "mods": ["shift"], "key": "F"}])
@@ -198,6 +203,25 @@ def act_drones_return() -> ActionSpec:
 def act_confirm() -> ActionSpec:
     """Enter confirm dialog (unmodifiable keybind)."""
     return ActionSpec("confirm", [{"do": "combo", "mods": [], "key": "ENTER"}])
+
+
+def act_warp_to(entry_xy: tuple[int, int] | None = None) -> ActionSpec:
+    """Chọn entry overview rồi S = Warp to (combat shortcut mặc định, EVE 2019+).
+
+    Click trước để chọn đúng mục tiêu, rồi S. Không truyền toạ độ → chỉ bấm S
+    (dùng khi đã chọn sẵn) — caller phải tự verify tên entry trước (P0-5).
+    """
+    steps = []
+    if entry_xy:
+        steps.append({"do": "click", "at": entry_xy})
+        steps.append({"do": "wait", "s": 0.4})
+    steps.append({"do": "combo", "mods": [], "key": "S"})
+    return ActionSpec("warp_to", steps)
+
+
+def act_warp_route() -> ActionSpec:
+    """Warp theo route autopilot đang set: S khi không chọn gì (warp tới destination)."""
+    return ActionSpec("warp_route", [{"do": "combo", "mods": [], "key": "S"}])
 
 
 def act_dismiss() -> ActionSpec:
