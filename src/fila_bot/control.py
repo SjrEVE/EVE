@@ -39,6 +39,8 @@ def _run_steps(steps: list[dict[str, Any]], dry: bool) -> list[dict[str, Any]]:
             log.append(inp.send_combo(st.get("mods", ()), st["key"], dry_run=dry))
         elif kind == "click":
             log.append(inp.send_click(*st["at"], dry_run=dry))
+        elif kind == "right_click":
+            log.append(inp.send_right_click(*st["at"], dry_run=dry))
         elif kind == "wait":
             if not dry:
                 time.sleep(st["s"])
@@ -58,15 +60,22 @@ def _run_steps(steps: list[dict[str, Any]], dry: bool) -> list[dict[str, Any]]:
     return log
 
 
-def execute(spec: ActionSpec, eye: Any = None, dry: bool = True) -> dict[str, Any]:
+def execute(spec: ActionSpec, eye: Any = None, dry: bool = True,
+            win: dict[str, Any] | None = None) -> dict[str, Any]:
     """Chạy action + verify + retry. dry=True: không bấm phím thật nhưng VẪN chạy
-    verify (để test được retry logic và verify functions)."""
+    verify (để test được retry logic và verify functions).
+
+    win: dict từ win.find_client_window(). Có win → toạ độ client được đổi sang
+    toạ độ màn hình trước khi click (BẮT BUỘC khi bấm thật, nếu không sẽ lệch
+    đúng bằng title bar + viền — ground 2026-11-09).
+    """
     attempts = 0
     verified = spec.verify is None      # không có verify → coi như ok ngay
     input_log: list[dict[str, Any]] = []
+    steps = _to_screen_steps(spec.steps, win, dry)
     while attempts <= spec.retry_max:
         attempts += 1
-        input_log += _run_steps(spec.steps, dry)
+        input_log += _run_steps(steps, dry)
         if spec.verify is None:
             verified = True
             break
@@ -76,6 +85,21 @@ def execute(spec: ActionSpec, eye: Any = None, dry: bool = True) -> dict[str, An
             verified = True
             break
     return {"ok": verified, "attempts": attempts, "input_log": input_log, "verified": verified}
+
+
+def _to_screen_steps(steps: list[dict[str, Any]], win: dict[str, Any] | None,
+                     dry: bool) -> list[dict[str, Any]]:
+    """Đổi mọi toạ độ client trong steps → toạ độ màn hình (nếu có win & bấm thật)."""
+    if win is None or dry:
+        return steps
+    from .win import client_to_screen
+    out = []
+    for st in steps:
+        if st.get("do") in ("click", "right_click") and st.get("at"):
+            out.append({**st, "at": client_to_screen(win, st["at"])})
+        else:
+            out.append(st)
+    return out
 
 
 # ---------------- Action catalog (keybind thật) ----------------
@@ -222,6 +246,23 @@ def act_warp_to(entry_xy: tuple[int, int] | None = None) -> ActionSpec:
 def act_warp_route() -> ActionSpec:
     """Warp theo route autopilot đang set: S khi không chọn gì (warp tới destination)."""
     return ActionSpec("warp_route", [{"do": "combo", "mods": [], "key": "S"}])
+
+
+# ---------------- context menu (ground 2026-11-09) ----------------
+# Ground thật trên client TQ: menu phải chuột = layer `l_menu` → `ContextMenu` (name=menuview)
+# → `MenuEntryView` (name=context_menu_<Xxx>) → `TextBody` chứa text hiển thị.
+# Menu nhiều cấp (Warp to Within → submenu) thì lần lượt: mở menu, hover entry, dump lại,
+# bấm entry cấp con. KHÔNG bấm mù: mỗi bước phải đọc lại UI tree để lấy toạ độ entry thật.
+
+def act_open_context_menu(xy: tuple[int, int]) -> ActionSpec:
+    """Chuột phải tại toạ độ (overview entry / object) để mở context menu."""
+    return ActionSpec("open_menu", [{"do": "right_click", "at": xy},
+                                    {"do": "wait", "s": 0.6}])
+
+
+def act_menu_entry(entry_xy: tuple[int, int]) -> ActionSpec:
+    """Bấm 1 entry trong context menu đang mở (toạ độ đọc từ UI tree, đã verify text)."""
+    return ActionSpec("menu_entry", [{"do": "click", "at": entry_xy}])
 
 
 def act_dismiss() -> ActionSpec:

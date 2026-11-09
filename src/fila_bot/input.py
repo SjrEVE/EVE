@@ -76,6 +76,23 @@ def send_combo(mods: Iterable[str], key: str, dry_run: bool = False,
     return {"ok": True, "combo": "+".join(list(mods) + [key]), "dry": False}
 
 
+def send_right_click(x: int, y: int, dry_run: bool = False, humanize: bool = True) -> dict[str, Any]:
+    """Chuột phải tại (x,y) — mở context menu. Ground 2026-11-09: dùng cho warp/dock/menu."""
+    if dry_run:
+        return {"ok": True, "x": x, "y": y, "button": "right", "dry": True}
+    import ctypes
+
+    user32 = ctypes.windll.user32
+    user32.SetCursorPos(int(x), int(y))
+    if humanize:
+        time.sleep(humanized_delay())
+    MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP = 0x0008, 0x0010
+    user32.mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, 0)
+    time.sleep(humanized_delay(0.02))
+    user32.mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0, 0)
+    return {"ok": True, "x": x, "y": y, "button": "right", "dry": False}
+
+
 def send_key(code: int, dry_run: bool = False, humanize: bool = True) -> dict[str, Any]:
     """1 phím đơn không modifier (giữ cho tương thích)."""
     if dry_run:

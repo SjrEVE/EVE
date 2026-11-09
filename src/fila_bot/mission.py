@@ -295,10 +295,42 @@ class MissionRunner:
         self.me = me
         self.orbit_km = orbit_km
         self.stage = "IDLE"
+        self.menu_plan: list[tuple[str, str | None]] = []   # [(entry, submenu_entry)]
+
+    def plan_warp_to(self, entry_name: str) -> None:
+        """Lên kế hoạch warp qua context menu: Warp to Within → 0 m (ground menu thật).
+
+        Menu EVE thật (2026-11-09): 'Warp to Within' có submenu khoảng cách; dùng
+        cấp 1 = 'Warp to Within', cấp 2 = 'Within 0 m'. Nếu client hiện 'Warp To'
+        trực tiếp thì đặt submenu=None.
+        """
+        self.menu_plan = [("Warp to Within", "Within 0 m")]
 
     def next_actions(self) -> list[dict[str, Any]]:
         st = self.me.state()
         acts: list[dict[str, Any]] = []
+
+        # Menu đang mở → ưu tiên xử menu (nếu không sẽ bấm loạn lên UI khác)
+        menus = self.me.eye.context_menus()
+        if menus and self.menu_plan:
+            name, sub = self.menu_plan[0]
+            if sub:
+                xy = self.me.eye.menu_entry_xy(sub, exact=False)
+                if xy is None:
+                    return [{"do": "hover_menu", "text": name,
+                             "why": f"cần mở submenu '{sub}' — hover '{name}' rồi đọc lại"}]
+                self.menu_plan.pop(0)
+                return [{"do": "menu_entry", "text": sub, "at": xy,
+                         "why": "submenu entry đọc từ ContextMenu"}]
+            xy = self.me.eye.menu_entry_xy(name, exact=False)
+            if xy is None:
+                self.menu_plan.clear()
+                return [{"do": "blocked",
+                         "why": f"menu đang mở nhưng không có entry '{name}'",
+                         "needs": "kiểm tra lại tên entry trong menu"}]
+            self.menu_plan.pop(0)
+            return [{"do": "menu_entry", "text": name, "at": xy,
+                     "why": "entry đọc từ ContextMenu (ground 2026-11-09)"}]
 
         if st.phase == "DOCKED":
             if not st.agent_dialogue and not st.mission_entries:
@@ -315,14 +347,23 @@ class MissionRunner:
                              "needs": "dump UI của AgentDialogueWindow có nút"})
             else:
                 self.stage = "READY_UNDOCK"
-                acts.append({"do": "undock"})
+                sw = self.me.eye.station_window()
+                if sw and sw.get("undock"):
+                    acts.append({"do": "undock", "at": sw["undock"]["center"],
+                                 "why": "UndockButton đọc từ LobbyWnd (ground 2026-11-09)"})
+                else:
+                    acts.append({"do": "blocked",
+                                 "why": "không thấy LobbyWnd/UndockButton trong UI tree",
+                                 "needs": "mở station window (LobbyWnd)"})
             return acts
 
         if st.phase == "IN_SPACE":
             if st.mission_beacons:
                 self.stage = "WARP_SITE"
                 b = st.mission_beacons[0]
-                acts.append({"do": "warp_to", "label": b["name"], "why": "beacon mission"})
+                self.plan_warp_to(b["name"])
+                acts.append({"do": "open_menu", "at": b["center"], "label": b["name"],
+                             "why": "mở context menu trên beacon → Warp to Within"})
             elif st.route_destination:
                 self.stage = "WARP_ROUTE"
                 acts.append({"do": "warp_route", "why": f"route → {st.route_destination}"})

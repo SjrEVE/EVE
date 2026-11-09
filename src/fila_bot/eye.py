@@ -355,3 +355,71 @@ class Eye:
                     return {"type": type_name, "texts": texts[:10],
                             "center": self.abs_center(w)}
         return None
+
+    # ---------------- station window (ground 2026-11-09, TQ Photon UI) ----------------
+    def station_window(self) -> dict[str, Any] | None:
+        """Cửa sổ station (LobbyWnd). Ground: type 'LobbyWnd' (name='lobbyWnd'),
+        nút undock = 'UndockButton' (name='undockButton') → EveLabelMedium 'label' = 'Undock'.
+
+        Trả {center, undock: {center, text}, tabs: [{name, center}]} hoặc None.
+        """
+        wins = self._find_by_type("LobbyWnd", select_many=True)
+        if not wins:
+            return None
+        win = wins[0]
+        out: dict[str, Any] = {"center": self.abs_center(win), "undock": None, "tabs": []}
+        for n in self.walk(win):
+            if n.get("type") == "UndockButton":
+                label = ""
+                for d in self.walk(n):
+                    txt = (d.get("attrs", {}) or {}).get("_setText")
+                    if isinstance(txt, str) and txt.strip():
+                        label = txt.strip()
+                        break
+                out["undock"] = {"center": self.abs_center(n), "text": label}
+            elif n.get("type") == "Tab":
+                a = n.get("attrs", {}) or {}
+                out["tabs"].append({"name": a.get("_name"), "center": self.abs_center(n)})
+        return out
+
+    def is_docked(self) -> bool:
+        """Đang docked: thấy station window (LobbyWnd) và KHÔNG có ShipUI."""
+        return self.station_window() is not None and self.ship_ui() is None
+
+    # ---------------- context menu (ground 2026-11-09) ----------------
+    def context_menus(self) -> list[dict[str, Any]]:
+        """Menu chuột phải đang mở: [{center, entries:[{text, center, name}]}].
+
+        Ground: ContextMenu (name='menuview') → MenuEntryView (name='context_menu_Xxx')
+        → TextBody text hiển thị. Menu nhiều cấp = nhiều ContextMenu trong cây
+        (cấp con nằm trong layer l_menu, toạ độ tuyệt đối đọc qua abs_center).
+        """
+        out: list[dict[str, Any]] = []
+        for menu in self._find_by_type("ContextMenu", select_many=True):
+            entries = []
+            for n in self.walk(menu):
+                if n.get("type") != "MenuEntryView":
+                    continue
+                text = ""
+                for d in self.walk(n):
+                    if d.get("type") in ("TextBody", "Label", "EveLabelSmall", "EveLabelMedium"):
+                        txt = (d.get("attrs", {}) or {}).get("_setText") \
+                            or (d.get("attrs", {}) or {}).get("_text")
+                        if isinstance(txt, str) and txt.strip():
+                            text = txt.strip()
+                            break
+                entries.append({"text": text,
+                                "name": (n.get("attrs", {}) or {}).get("_name"),
+                                "center": self.abs_center(n)})
+            out.append({"center": self.abs_center(menu), "entries": entries})
+        return out
+
+    def menu_entry_xy(self, text: str, exact: bool = False) -> tuple[int, int] | None:
+        """Toạ độ entry trong menu ĐANG MỞ theo text (verify trước khi bấm — P0-5)."""
+        want = text.strip().lower()
+        for menu in self.context_menus():
+            for e in menu["entries"]:
+                t = (e.get("text") or "").strip().lower()
+                if (t == want) if exact else (want and want in t):
+                    return e["center"]
+        return None

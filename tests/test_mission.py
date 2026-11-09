@@ -122,3 +122,24 @@ a2 = r2.next_actions()
 ok("gate_phase_after_rename", me2.state().phase in ("POCKET_CLEAR", "AT_SITE"), me2.state().phase)
 
 print(f"\n=> {PASS} test PASS (mission runner, dump thật)")
+
+
+# ---------------- STATION WINDOW + CONTEXT MENU (dump thật ui_dump_menu.json) ----------------
+em = eye_from("ui_tree_station_menu.json")
+ok("station_window_found", em.station_window() is not None)
+sw = em.station_window()
+ok("station_undock_button", sw["undock"] is not None and sw["undock"]["text"] == "Undock", str(sw["undock"]))
+ok("station_undock_xy", sw["undock"]["center"] == (1145, 282), str(sw["undock"]["center"]))
+ok("station_is_docked", em.is_docked() is True)
+ok("station_tabs", {t["name"] for t in sw["tabs"]} >=
+   {"guestsPanel", "stationInformationTabAgents", "Button_InventoryPanel"}, str(sw["tabs"]))
+
+menus = em.context_menus()
+ok("context_menu_found", len(menus) == 1, str(len(menus)))
+ok("context_menu_entries", [e["text"] for e in menus[0]["entries"]] == ["Minimize", "Close"],
+   str(menus[0]["entries"]))
+ok("menu_entry_xy_by_text", em.menu_entry_xy("Close") == (1008, 323), str(em.menu_entry_xy("Close")))
+ok("menu_entry_xy_missing", em.menu_entry_xy("Warp to Within") is None,
+   "không được trả toạ độ khi menu không có entry đó")
+
+print(f"=> {PASS} test PASS tổng (mission + station + menu)")

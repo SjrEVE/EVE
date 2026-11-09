@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
 from fila_bot.mission import MissionEye, MissionRunner   # noqa: E402
+from fila_bot.win import find_client_window, focus             # noqa: E402
 
 
 def _open_eye(dll: str | None):
@@ -55,6 +56,15 @@ def cmd_run(args) -> int:
     me = MissionEye(e)
     runner = MissionRunner(me, orbit_km=args.orbit)
     dry = not args.go
+    win = None
+    if not dry:
+        win = find_client_window()
+        if win is None:
+            print("FATAL: không tìm thấy cửa sổ EVE (exefile.exe) — không bấm mù")
+            return 2
+        focus(win)
+        print(f"window: {win['title']} origin={win['origin']} size={win['size']}")
+        time.sleep(0.5)
     rounds = 0
     while rounds < args.max_rounds:
         rounds += 1
@@ -72,13 +82,37 @@ def cmd_run(args) -> int:
                 print(f"BLOCKED: {a.get('why')}")
                 continue
             if name == "undock":
-                # click nút Undock thật: tìm StationServiceBtn có text Undock
-                xy = _find_button_xy(e, "Undock")
-                if xy is None:
-                    print("BLOCKED: không thấy nút Undock trong UI tree")
+                at = a.get("at")
+                if not at:
+                    print("BLOCKED: action undock thiếu toạ độ từ eye")
                     continue
-                r = ctl.execute(ctl.act_undock_at(xy), dry=dry)
+                r = ctl.execute(ctl.act_undock_at(at), dry=dry, win=win)
                 print("undock:", r.get("ok"))
+                did = True
+            elif name == "open_menu":
+                at = a.get("at")
+                if not at:
+                    print("BLOCKED: open_menu thiếu toạ độ entry")
+                    continue
+                r = ctl.execute(ctl.act_open_context_menu(at), dry=dry, win=win)
+                print(f"open_menu on '{a.get('label')}':", r.get("ok"))
+                did = True
+            elif name == "menu_entry":
+                at = a.get("at")
+                if not at:
+                    print("BLOCKED: menu_entry thiếu toạ độ (menu không có entry đó)")
+                    continue
+                r = ctl.execute(ctl.act_menu_entry(at), dry=dry, win=win)
+                print(f"menu_entry '{a.get('text')}':", r.get("ok"))
+                did = True
+            elif name == "hover_menu":
+                # hover để submenu bung ra; dùng click nhẹ vào chính entry cấp 1
+                xy = e.menu_entry_xy(a.get("text") or "", exact=False)
+                if xy is None:
+                    print(f"BLOCKED: không thấy entry menu '{a.get('text')}'")
+                    continue
+                r = ctl.execute(ctl.act_menu_entry(xy), dry=dry, win=win)
+                print(f"hover_menu '{a.get('text')}':", r.get("ok"))
                 did = True
             elif name in ("warp_to", "warp_route"):
                 label = a.get("label")
@@ -87,9 +121,9 @@ def cmd_run(args) -> int:
                     if xy is None:
                         print(f"BLOCKED: không thấy entry '{label}' trong overview")
                         continue
-                    r = ctl.execute(ctl.act_warp_to(xy), dry=dry)
+                    r = ctl.execute(ctl.act_warp_to(xy), dry=dry, win=win)
                 else:
-                    r = ctl.execute(ctl.act_warp_route(), dry=dry)
+                    r = ctl.execute(ctl.act_warp_route(), dry=dry, win=win)
                 print(f"{name}: {r.get('ok')}")
                 did = True
         if not did:
