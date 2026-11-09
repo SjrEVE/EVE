@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include "process.h"
 
 
@@ -95,7 +96,7 @@ void get_process_name_from_pid(DWORD pid, char** process_name_out)
 
 	// Release the handle to the process.
 	CloseHandle(hProcess);
-	wcstombs_s(&i, *process_name_out, MAX_PATH, process_name, wcslen(process_name) + 1);
+	size_t conv = 0; wcstombs_s(&conv, *process_name_out, MAX_PATH, process_name, wcslen(process_name) + 1);
 }
 
 DWORD get_pid(char * process_name)

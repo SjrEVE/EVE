@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include "memory.h"
 
 void InitAddresses(Addresses* addrs)

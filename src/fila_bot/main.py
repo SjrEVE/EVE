@@ -87,8 +87,10 @@ class RealExecutor:
         ov = e.overview_entries()
         self.overview_count = len(ov)
         self.maneuver = e.maneuver()
+        self.speed_mps = e.speed_mps() or 0        # ground 2026-11-09: SpeedGauge label
         self.drones_in_space = len(e._find_by_type("DroneEntry")) if hasattr(e, "_find_by_type") else 0
-        self.targets = len(e._find_by_type("ActiveItem")) if hasattr(e, "_find_by_type") else 0
+        # chọn mục tiêu (SelectedItemWnd) ≠ đã lock — node lock CHƯA ground
+        self.targets = 1 if e.selected_item() else 0
 
     def snapshot(self) -> dict[str, Any]:
         return {
@@ -107,39 +109,32 @@ class RealExecutor:
 
     # ---- action → keybind ----
     def _overview_entry_xy(self, label: str | None = None) -> tuple[int, int] | None:
-        """Tọa độ entry overview. label=None → entry đầu; label=chuỗi → entry có text khớp
-        (P0-5: verify tên trước khi click, không bấm mù entry đầu)."""
-        ovs = self.eye._find_by_type("OverView", select_many=False)
-        if not ovs:
-            return None
-        entries = self.eye._find_by_type("OverviewScrollEntry", root=ovs[0])
+        """Tọa độ entry overview (toạ độ TUYỆT ĐỐI trong client area).
+        label=None → entry đầu; label=chuỗi → entry có text khớp (P0-5: verify tên
+        trước khi click, không bấm mù entry đầu)."""
+        entries = self.eye.overview_entries()
         if not entries:
             return None
         if label:
             for e in entries:
-                texts = self.eye._texts_of_node(e)
-                if any(label.lower() in t.lower() for t in texts):
-                    return self.eye.center_xy(e)
+                if any(label.lower() in t.lower() for t in e.get("texts_left_to_right", [])):
+                    return e.get("center")
             return None   # không thấy entry khớp → caller báo fail (không fallback mù)
-        return self.eye.center_xy(entries[0])
+        return entries[0].get("center")
 
     def _targeted_entry_xy(self) -> tuple[int, int] | None:
-        """Entry overview của target ĐANG LOCK (ActiveItem/Selected Item tồn tại).
-        P0-3/P0-5: orbit/approach phải bấm đúng target đã chọn, không entry đầu."""
-        sel = self.eye._find_by_type("ActiveItem", select_many=False)
+        """Entry overview của target ĐANG chọn (Selected Item). P0-3/P0-5:
+        orbit/approach phải bấm đúng target đã chọn, không entry đầu."""
+        sel = self.eye.selected_item()
         if not sel:
             return None
-        # tìm entry overview trùng tên với selected item
-        sel_texts = set(t.lower() for t in self.eye._texts_of_node(sel[0]) if t)
-        if not sel_texts:
+        name = (sel.get("name") or "").lower()
+        if not name:
             return None
-        ovs = self.eye._find_by_type("OverView", select_many=False)
-        if not ovs:
-            return None
-        for e in self.eye._find_by_type("OverviewScrollEntry", root=ovs[0]):
-            for t in self.eye._texts_of_node(e):
-                if t.lower() in sel_texts:
-                    return self.eye.center_xy(e)
+        for e in self.eye.overview_entries():
+            texts = [t.lower() for t in e.get("texts_left_to_right", [])]
+            if any(name in t or t in name for t in texts if t):
+                return e.get("center")
         return None
 
     def process_actions(self) -> list[dict[str, Any]]:

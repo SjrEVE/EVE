@@ -132,11 +132,11 @@ def act_lock(entry_xy: tuple[int, int]) -> ActionSpec:
 
 
 def _verify_locked(eye) -> bool:
-    """Eye check: ActiveItem (selected item window) tồn tại = có selection."""
-    try:
-        return len(eye._find_by_type("ActiveItem", select_many=False)) > 0
-    except Exception:  # noqa: BLE001 — eye lỗi = không verify được → coi như fail
-        return False
+    """Verify lock qua eye — CHƯA GROUND được node báo lock trên client thật
+    (2026-11-09: SelectedItemWnd chỉ là selection, chưa phải lock; chưa có target
+    trong tầm để test). Fail-closed: trả False cho tới khi ground được node lock
+    thật trong abyss — KHÔNG đoán."""
+    return False
 
 
 def act_module(slot: int, rack: str = "high", enable: bool = True) -> ActionSpec:

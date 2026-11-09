@@ -3,6 +3,9 @@ bus/
 logs/
 *.log
 ui_dump.json
+ui_dump*.json
+shots/
+build/
 super.debug.json
 debug.json
 

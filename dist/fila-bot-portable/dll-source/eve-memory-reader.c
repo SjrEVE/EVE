@@ -71,15 +71,15 @@ void read_committed_memory_regions_from_pid(DWORD pid, BOOL with_content)
 	ULONGLONG lpAddress = 0x0;
 	while (TRUE)
 	{
-		MEMORY_BASIC_INFORMATION64 lpBuffer;
-		SIZE_T result = VirtualQueryEx(hProcess, lpAddress, &lpBuffer, sizeof(MEMORY_BASIC_INFORMATION64));
+		MEMORY_BASIC_INFORMATION lpBuffer;
+		SIZE_T result = VirtualQueryEx(hProcess, (LPCVOID)lpAddress, &lpBuffer, sizeof(lpBuffer));
 
-		if (lpAddress == lpBuffer.BaseAddress + lpBuffer.RegionSize)
+		if (lpAddress == (ULONGLONG)lpBuffer.BaseAddress + lpBuffer.RegionSize)
 		{
 			break;
 		}
 
-		lpAddress = lpBuffer.BaseAddress + lpBuffer.RegionSize;
+		lpAddress = (ULONGLONG)lpBuffer.BaseAddress + lpBuffer.RegionSize;
 
 		if (lpBuffer.State != MEM_COMMIT)
 		{
@@ -100,7 +100,7 @@ void read_committed_memory_regions_from_pid(DWORD pid, BOOL with_content)
 		{
 			ULONGLONG bytesRead = 0;
 			byte* regionContentBuffer = malloc(sizeof(byte) * lpBuffer.RegionSize);
-			if (!ReadProcessMemory(hProcess, lpBuffer.BaseAddress, regionContentBuffer, lpBuffer.RegionSize, &bytesRead))
+			if (!ReadProcessMemory(hProcess, (LPCVOID)lpBuffer.BaseAddress, regionContentBuffer, lpBuffer.RegionSize, &bytesRead))
 			{
 				if (regionContentBuffer != NULL)
 				{
@@ -131,7 +131,7 @@ void read_committed_memory_regions_from_pid(DWORD pid, BOOL with_content)
 			printf("error creating CommittedRegion");
 			exit(1);
 		}
-		cr->address = lpBuffer.BaseAddress;
+		cr->address = (ULONGLONG)lpBuffer.BaseAddress;
 		cr->region_size = lpBuffer.RegionSize;
 		cr->content = regionContent;
 		InsertCommittedRegion(ps, cr);
@@ -190,7 +190,7 @@ byte* read_bytes(ULONGLONG address, ULONGLONG length, ULONGLONG* bytes_read)
 {
 
 	byte* regionContentBuffer = malloc(sizeof(byte) * length);
-	if (!ReadProcessMemory(hProcess, address, regionContentBuffer, _msize(regionContentBuffer), bytes_read))
+	if (!ReadProcessMemory(hProcess, (LPCVOID)address, regionContentBuffer, _msize(regionContentBuffer), bytes_read))
 	{
 		if (regionContentBuffer != NULL)
 		{
@@ -265,7 +265,7 @@ Addresses* find_python_type_object_type_candidates_within_region(CommittedRegion
 	InitAddresses(candidates);
 	ULONGLONG* memory_region_ulong = read_memory_region_content_as_ulong_array(cr);
 	if (memory_region_ulong == NULL)
-		return;
+		return candidates;
 
 	UINT candidate_address_index;
 	for (candidate_address_index = 0; candidate_address_index < (cr->region_size / 8) - 4; ++candidate_address_index)
@@ -321,7 +321,7 @@ Addresses* find_python_type_objects_candidates_within_region(CommittedRegion* cr
 	InitAddresses(candidates);
 	ULONGLONG* memory_region_ulong = read_memory_region_content_as_ulong_array(cr);
 	if (memory_region_ulong == NULL)
-		return;
+		return candidates;
 
 	UINT candidate_address_index;
 	for (candidate_address_index = 0; candidate_address_index < (cr->region_size / 8) - 4; ++candidate_address_index)
@@ -797,6 +797,21 @@ void read_python_type_int(ULONGLONG address, PythonDictValueRepresentation* repr
 
 void read_python_type_float(ULONGLONG address, PythonDictValueRepresentation* repr)
 {
+	// CPython 3.x PyFloatObject: ob_refcnt(8) + ob_type(8) + ob_fval(double) → đọc 8 byte tại +0x10
+	ULONGLONG bytes_read = 0;
+	byte* float_object_memory = read_bytes(address, 0x18, &bytes_read);
+	if (float_object_memory == NULL || bytes_read != 0x18)
+	{
+		free(float_object_memory);
+		float_object_memory = NULL;
+		return;
+	}
+	double value = 0.0;
+	memcpy(&value, float_object_memory + 0x10, 8);
+	free(float_object_memory);
+	float_object_memory = NULL;
+	repr->is_float = TRUE;
+	repr->float_value = value;
 }
 
 void read_python_type_bool(ULONGLONG address, PythonDictValueRepresentation* repr)

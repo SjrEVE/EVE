@@ -22,6 +22,10 @@ DLL_PATH = os.path.join(
 class Eye:
     """Mắt của bot: UI tree JSON từ memory EVE client. Read-only, không write/inject."""
 
+    # default để test dựng Eye.__new__ không cần __init__
+    _pos: dict[int, tuple[int, int]] | None = None
+    _pos_root: dict[str, Any] | None = None
+
     def __init__(self, dll_path: str | None = None) -> None:
         path = os.path.abspath(dll_path or DLL_PATH)
         if not os.path.exists(path):
@@ -40,12 +44,16 @@ class Eye:
         if ret != 0:
             raise RuntimeError(f"DLL initialize fail: {ret} (EVE client chưa chạy?)")
         self.root: dict[str, Any] | None = None
+        self._pos: dict[int, tuple[int, int]] | None = None
+        self._pos_root: dict[str, Any] | None = None
 
     def refresh(self) -> dict[str, Any] | None:
         """Đọc UI tree mới nhất. Trả root dict hoặc None khi không đọc được."""
         self.dll.read_ui_trees()
         raw = self.dll.get_ui_json()
         self.dll.free_ui_json()
+        self._pos = None
+        self._pos_root = None
         if not raw:
             self.root = None
             return None
@@ -83,12 +91,43 @@ class Eye:
 
     @staticmethod
     def center_xy(node: dict[str, Any], parent_x: float = 0.0, parent_y: float = 0.0) -> tuple[int, int]:
-        """Tọa độ điểm giữa node theo _displayX/Y (lũy kế từ cha)."""
+        """Tâm node theo _displayX/Y CỘNG THÊM parent_x/y (mặc định 0 = toạ độ cục bộ).
+
+        ⚠️ Muốn toạ độ click thật: dùng abs_center(node) — tự cộng cả chuỗi cha
+        (ground 2026-11-09: _displayX/Y là tương đối với cha).
+        """
         x = parent_x + (node.get("attrs", {}).get("_displayX", 0) or 0)
         y = parent_y + (node.get("attrs", {}).get("_displayY", 0) or 0)
         w = (node.get("attrs", {}).get("_displayWidth", 0) or 0)
         h = (node.get("attrs", {}).get("_displayHeight", 0) or 0)
         return int(x + w // 2), int(y + h // 2)
+
+    def _ensure_pos(self) -> None:
+        """Index toạ độ tuyệt đối (cộng dồn _displayX/Y từ UIRoot) cho mọi node."""
+        if self._pos is not None and self._pos_root is self.root:
+            return
+        pos: dict[int, tuple[int, int]] = {}
+
+        def walk(node: dict[str, Any], x: int, y: int) -> None:
+            a = node.get("attrs", {}) or {}
+            nx = x + int(a.get("_displayX") or 0)
+            ny = y + int(a.get("_displayY") or 0)
+            pos[id(node)] = (nx, ny)
+            for child in node.get("children") or []:
+                walk(child, nx, ny)
+
+        if self.root is not None:
+            walk(self.root, 0, 0)
+        self._pos = pos
+        self._pos_root = self.root
+
+    def abs_center(self, node: dict[str, Any]) -> tuple[int, int]:
+        """Tâm node theo toạ độ TUYỆT ĐỐI trong client area (dùng để click)."""
+        self._ensure_pos()
+        x, y = (self._pos or {}).get(id(node), (0, 0))
+        a = node.get("attrs", {}) or {}
+        return int(x + int(a.get("_displayWidth") or 0) // 2), \
+            int(y + int(a.get("_displayHeight") or 0) // 2)
 
     # ------------- game data (schema ground từ Sanderling ParseUserInterface.elm,
     # xem docs/EVE_UI_TREE_ATTRS.md; verify lần đầu trên Singularity client thật) -------------
@@ -122,8 +161,12 @@ class Eye:
         return out or None
 
     def capacitor_percent(self) -> float | None:
-        """Cap % từ pmarks của CapacitorContainer: pmark có alpha < 20 = segment còn đầy
-        (Sanderling: colorPercent.a < 20 → filled). Trả None nếu không đọc được."""
+        """Cap % từ pmarks của CapacitorContainer.
+
+        ⚠️ Ground 2026-11-09 (TQ client): pmark._color là PyColor (C-extension) —
+        DLL hiện chưa decode được r/g/b/a → KHÔNG đọc được cap. Trả None (unknown)
+        để guard fail-closed, TUYỆT ĐỐI không trả 0.0 giả.
+        """
         ship = self.ship_ui()
         if ship is None:
             return None
@@ -134,12 +177,18 @@ class Eye:
         if not pmarks:
             return None
         fills = 0
+        colored = 0
         for p in pmarks:
             color = p.get("attrs", {}).get("_color") or p.get("attrs", {}).get("color")
             alpha = self._alpha_from_color(color)
-            if alpha is not None and alpha < 20:
+            if alpha is None:
+                continue
+            colored += 1
+            if alpha < 20:
                 fills += 1
-        return round(fills * 100.0 / len(pmarks), 1)
+        if colored == 0:
+            return None   # màu không decode được → unknown, không đoán
+        return round(fills * 100.0 / colored, 1)
 
     @staticmethod
     def _alpha_from_color(color: Any) -> float | None:
@@ -153,38 +202,108 @@ class Eye:
             return int(color[7:9], 16) / 255.0 * 100
         return None
 
+    def overview_window(self) -> dict[str, Any] | None:
+        """Cửa sổ overview đang hiển thị. Ground 2026-11-09 (TQ client): type thật
+        là 'OverviewWindow' (name='overview') — KHÔNG phải 'OverView' (Sanderling cũ)."""
+        for type_name in ("OverviewWindow", "OverView"):
+            wins = [w for w in self._find_by_type(type_name, select_many=True)
+                    if (w.get("attrs", {}) or {}).get("_display") is not False]
+            if wins:
+                return wins[0]
+        return None
+
     def overview_entries(self) -> list[dict[str, Any]]:
-        """Danh sách overview entries — XEM docs/EVE_UI_TREE_ATTRS.md (đã ground).
-        OverView → headers (text cột) + OverviewScrollEntry (texts trái→phải)."""
-        ovs = self._find_by_type("OverView", select_many=False)
-        if not ovs:
+        """Danh sách overview entries. Ground 2026-11-09 (TQ client):
+        OverviewWindow → OverviewScrollEntry → OverviewLabel (text ở attrs['_text']).
+
+        Trả mỗi entry dạng {"texts_left_to_right": [...], <TênCột>: giá trị, "center": (x,y)}
+        — cột map theo thứ tự x của header (EveLabelSmall._setText) trong cùng cửa sổ.
+        """
+        win = self.overview_window()
+        if win is None:
             return []
-        headers = self._parse_overview_headers(ovs[0])
+        entries = self._find_by_type("OverviewScrollEntry", root=win)
+        if not entries:
+            return []
+        header_cols = self._overview_columns(win, entries[0])
         out = []
-        for entry in self._find_by_type("OverviewScrollEntry", root=ovs[0]):
-            texts = self._texts_of_node(entry)
-            rec: dict[str, Any] = {"texts_left_to_right": texts}
-            if headers:
-                for i, t in enumerate(texts):
-                    if i < len(headers):
-                        rec[headers[i]] = t
+        for entry in entries:
+            labels: list[tuple[int, str]] = []
+            for n in self.walk(entry):
+                if n.get("type") != "OverviewLabel":
+                    continue
+                txt = (n.get("attrs", {}) or {}).get("_text")
+                if isinstance(txt, str) and txt.strip():
+                    labels.append((self.abs_center(n)[0], txt.strip()))
+            labels.sort(key=lambda t: t[0])
+            rec: dict[str, Any] = {"texts_left_to_right": [t for _, t in labels]}
+            for lx, txt in labels:
+                name = self._nearest_column(lx, header_cols)
+                if name:
+                    rec[name] = txt
+            rec["center"] = self.abs_center(entry)
             out.append(rec)
         return out
 
-    def _parse_overview_headers(self, overview_root: dict[str, Any]) -> list[str]:
-        heads = [n for n in self.walk(overview_root)
-                 if "headers" in str(n.get("type", "")).lower()]
-        if not heads:
-            return []
-        return [t for t in self._texts_of_node(heads[0]) if t]
+    def _overview_columns(self, win: dict[str, Any],
+                          first_entry: dict[str, Any]) -> list[tuple[int, str]]:
+        """Cột overview: [(tâm_x, tên_cột)] — chỉ lấy header EveLabelSmall cùng hàng
+        với entry đầu (ground 2026-11-09: header y=252, entry y=264→276)."""
+        _, y_entry = self.abs_center(first_entry)
+        cols: list[tuple[int, str]] = []
+        for n in self.walk(win):
+            if n.get("type") != "EveLabelSmall":
+                continue
+            txt = (n.get("attrs", {}) or {}).get("_setText")
+            if not isinstance(txt, str) or not txt.strip():
+                continue
+            x, y = self.abs_center(n)
+            if y_entry - 40 <= y <= y_entry:
+                cols.append((x, txt.strip()))
+        cols.sort(key=lambda t: t[0])
+        return cols
+
+    @staticmethod
+    def _nearest_column(x: int, cols: list[tuple[int, str]]) -> str | None:
+        if not cols:
+            return None
+        return min(cols, key=lambda c: abs(c[0] - x))[1]
+
+    def selected_item(self) -> dict[str, Any] | None:
+        """Selected Item window. Ground 2026-11-09: type 'SelectedItemWnd'
+        (name='selecteditemview'), text ở _setText. Trả {name, texts, center} hoặc None."""
+        for type_name in ("SelectedItemWnd", "ActiveItem"):
+            for win in self._find_by_type(type_name, select_many=True):
+                texts = self._texts_of_node(win)
+                if texts:
+                    return {"name": texts[1] if len(texts) > 1 else texts[0],
+                            "texts": texts[:10], "center": self.abs_center(win)}
+        return None
+
+    def speed_mps(self) -> float | None:
+        """Tốc độ hiện tại đọc từ SpeedGauge label ('600 m/s'). Ground 2026-11-09."""
+        for n in self.walk(self.root or {}):
+            a = n.get("attrs", {}) or {}
+            if a.get("_name") == "speedLabel":
+                txt = a.get("_setText") or ""
+                num = "".join(ch for ch in str(txt) if ch.isdigit() or ch == ".")
+                try:
+                    return float(num)
+                except ValueError:
+                    return None
+        return None
 
     @staticmethod
     def _texts_of_node(node: dict[str, Any]) -> list[str]:
+        """Text của node + con: nhận cả _setText (label thường) và _text (OverviewLabel)."""
         out = []
         for n in Eye.walk(node):
-            txt = n.get("attrs", {}).get("_setText")
-            if isinstance(txt, str) and txt.strip():
-                out.append(txt.strip())
+            a = n.get("attrs", {}) or {}
+            for key in ("_setText", "_text"):
+                txt = a.get(key)
+                if isinstance(txt, str) and txt.strip():
+                    out.append(txt.strip())
+                    break
         return out
 
     def maneuver(self) -> str | None:
@@ -201,21 +320,20 @@ class Eye:
         return None
 
     def module_buttons(self) -> list[dict[str, Any]]:
-        """Tất cả module buttons: [{center, is_active, hilite}] theo ShipSlot→ModuleButton."""
+        """Module buttons trên HUD: [{center, is_active, hilite}].
+        Ground 2026-11-09: HUD mới dùng SlotsContainer; khi tàu CÓ module sẽ có
+        ModuleButton (chưa ground được vì tàu test chưa gắn module)."""
         ship = self.ship_ui()
         if ship is None:
             return []
         out = []
-        for slot in self._find_by_type("ShipSlot", root=ship):
-            for btn in self._find_by_type("ModuleButton", root=slot, select_many=False):
-                attrs = btn.get("attrs", {})
-                x, y = self.center_xy(btn)
-                out.append({
-                    "center": (x, y),
-                    "is_active": attrs.get("isActive"),
-                    "hilite": bool(attrs.get("_name") == "hilite"),
-                })
-                break
+        for btn in self._find_by_type("ModuleButton", root=ship):
+            attrs = btn.get("attrs", {}) or {}
+            out.append({
+                "center": self.abs_center(btn),
+                "is_active": attrs.get("isActive") if "isActive" in attrs else attrs.get("ramp_active"),
+                "hilite": bool(attrs.get("_name") == "hilite"),
+            })
         return out
 
     def confirm_dialog(self) -> dict[str, Any] | None:
@@ -226,6 +344,6 @@ class Eye:
             for w in wins:
                 texts = self._texts_of_node(w)
                 if texts:
-                    x, y = self.center_xy(w)
-                    return {"type": type_name, "texts": texts[:10], "center": (x, y)}
+                    return {"type": type_name, "texts": texts[:10],
+                            "center": self.abs_center(w)}
         return None

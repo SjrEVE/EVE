@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include "python.h"
 
 PyDictEntryList* NewPyDictEntryList()
@@ -34,7 +35,7 @@ void InsertPyDictEntry(PyDictEntryList* pdel, PyDictEntry *e)
 	if (pdel->used == pdel->size)
 	{
 		pdel->size *= 2;
-		PyDictEntry* tmp = realloc(pdel->data, pdel->size * sizeof(PyDictEntry*));
+		PyDictEntry** tmp = realloc(pdel->data, pdel->size * sizeof(PyDictEntry*));
 		if (tmp == NULL)
 		{
 			printf("unable to realloc data array for PyDictEntryList\n");

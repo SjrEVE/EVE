@@ -105,21 +105,21 @@ SHIP_FAKE = {
             {"address": 120, "type": "X", "attrs": {"_name": "indicationcontainer", "maneuverType": "Approach"}, "children": []},
         ],
     }, {
-        "address": 130, "type": "OverView", "attrs": {}, "children": [
-            {"address": 131, "type": "OverviewHeaders", "attrs": {}, "children": [
-                {"address": 132, "type": "Label", "attrs": {"_setText": "Name"}, "children": []},
-                {"address": 133, "type": "Label", "attrs": {"_setText": "Type"}, "children": []},
-                {"address": 134, "type": "Label", "attrs": {"_setText": "Distance"}, "children": []},
+        "address": 130, "type": "OverviewWindow",
+        "attrs": {"_name": "overview", "_displayX": 0, "_displayY": 500,
+                  "_displayWidth": 460, "_displayHeight": 300}, "children": [
+            {"address": 131, "type": "EveLabelSmall", "attrs": {"_setText": "Distance", "_displayX": 20, "_displayY": 0, "_displayWidth": 60, "_displayHeight": 18}, "children": []},
+            {"address": 132, "type": "EveLabelSmall", "attrs": {"_setText": "Name", "_displayX": 90, "_displayY": 0, "_displayWidth": 60, "_displayHeight": 18}, "children": []},
+            {"address": 133, "type": "EveLabelSmall", "attrs": {"_setText": "Type", "_displayX": 200, "_displayY": 0, "_displayWidth": 80, "_displayHeight": 18}, "children": []},
+            {"address": 135, "type": "OverviewScrollEntry", "attrs": {"_displayX": 0, "_displayY": 24, "_displayWidth": 428, "_displayHeight": 24}, "children": [
+                {"address": 136, "type": "OverviewLabel", "attrs": {"_text": "12 km", "_displayX": 20, "_displayY": 3, "_displayWidth": 60, "_displayHeight": 18}, "children": []},
+                {"address": 137, "type": "OverviewLabel", "attrs": {"_text": "Kikimora", "_displayX": 90, "_displayY": 3, "_displayWidth": 60, "_displayHeight": 18}, "children": []},
+                {"address": 138, "type": "OverviewLabel", "attrs": {"_text": "Triglavian", "_displayX": 200, "_displayY": 3, "_displayWidth": 80, "_displayHeight": 18}, "children": []},
             ]},
-            {"address": 135, "type": "OverviewScrollEntry", "attrs": {}, "children": [
-                {"address": 136, "type": "Label", "attrs": {"_setText": "Kikimora"}, "children": []},
-                {"address": 137, "type": "Label", "attrs": {"_setText": "Triglavian"}, "children": []},
-                {"address": 138, "type": "Label", "attrs": {"_setText": "12 km"}, "children": []},
-            ]},
-            {"address": 139, "type": "OverviewScrollEntry", "attrs": {}, "children": [
-                {"address": 140, "type": "Label", "attrs": {"_setText": "Bioadaptive Cache"}, "children": []},
-                {"address": 141, "type": "Label", "attrs": {"_setText": "Container"}, "children": []},
-                {"address": 142, "type": "Label", "attrs": {"_setText": "1 km"}, "children": []},
+            {"address": 139, "type": "OverviewScrollEntry", "attrs": {"_displayX": 0, "_displayY": 48, "_displayWidth": 428, "_displayHeight": 24}, "children": [
+                {"address": 140, "type": "OverviewLabel", "attrs": {"_text": "1 km", "_displayX": 20, "_displayY": 3, "_displayWidth": 60, "_displayHeight": 18}, "children": []},
+                {"address": 141, "type": "OverviewLabel", "attrs": {"_text": "Bioadaptive Cache", "_displayX": 90, "_displayY": 3, "_displayWidth": 120, "_displayHeight": 18}, "children": []},
+                {"address": 142, "type": "OverviewLabel", "attrs": {"_text": "Container", "_displayX": 200, "_displayY": 3, "_displayWidth": 80, "_displayHeight": 18}, "children": []},
             ]},
         ],
     }, {
@@ -146,7 +146,7 @@ cap = e2.capacitor_percent()
 ok("capacitor_pmarks", cap == 50.0, str(cap))   # 2/4 pmark alpha<20
 
 mods = e2.module_buttons()
-ok("module_buttons", len(mods) == 1 and mods[0]["is_active"] is True and mods[0]["center"] == (920, 1020), str(mods))
+ok("module_buttons", len(mods) == 1 and mods[0]["is_active"] is True and mods[0]["center"] == (920, 1720), str(mods))
 
 mv = e2.maneuver()
 ok("maneuver_read", mv == "approach", str(mv))

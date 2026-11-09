@@ -1,5 +1,33 @@
 # EVE UI Tree — Attrs thật đã ground (nguồn: Sanderling/ParseUserInterface.elm 2,893 dòng)
 
+## ⚠️ GROUND LẠI 2026-11-09 trên client thật (TQ, Photon HUD) — ĐÈ lên bảng Sanderling bên dưới
+
+Dump: `ui_dump_space*.json` (Jita, undocked, tàu không module) + fixture khoá schema
+`tests/fixtures/ui_tree_ground_tq.json` + test `tests/test_ground.py`.
+
+| Thứ cần đọc | Sanderling cũ (SAI với client này) | THẬT 2026-11-09 |
+|---|---|---|
+| Overview window | `OverView` | **`OverviewWindow`** (name=`overview`, có `_display`) |
+| Text trong entry | `_setText` | **`OverviewLabel.attrs["_text"]`** (không phải _setText) |
+| Selected item | `ActiveItem` | **`SelectedItemWnd`** (name=`selecteditemview`), text ở `_setText` |
+| HP gauge | `Gauge._lastValue` | **`ShipHudSpriteGauge._lastValue`** (float 0..1) |
+| Speed | (không rõ) | **`SpeedGauge` → label `_name=speedLabel`, `_setText="600 m/s"`** |
+| Module buttons | `ShipSlot` → `ModuleButton` | HUD mới: `SlotsContainer` (chứa `OverloadBtn`); tàu CÓ module chưa ground được |
+| Cap pmarks | `pmark` color alpha | `pmark._color` = **`PyColor`** (C-extension) — DLL chưa decode → **cap = unknown (None)** |
+| Toạ độ | `_displayX/Y` | **TƯƠNG ĐỐI với cha** → phải cộng dồn từ UIRoot (`Eye.abs_center`) |
+
+**Bug DLL đã fix (2026-11-09):** `read_python_type_float()` trong `dll-source/eve-memory-reader.c`
+là hàm RỖNG → mọi float trong UI tree trả `null` (HP luôn None dù gauge có giá trị).
+Đã implement đọc `PyFloatObject.ob_fval` (double @ +0x10) và đổi `FLOAT float_value` → `double`.
+Build lại bằng mingw-w64: xem `dll-source/build_mingw.sh` + `dll-source/PROVENANCE.md`.
+
+**Chưa ground được (fail-closed, KHÔNG đoán):** node báo target đã lock, module button khi có
+module, cap % (PyColor), popup confirm filament. Cần client ở trong abyss / tàu có fit.
+
+---
+
+> Phần dưới là tài liệu Sanderling gốc — giữ để tham khảo, nhưng chỗ nào lệch bảng trên thì **bảng trên thắng**.
+
 > Mọi attrs dưới đây là **sự thật đã được cộng đồng BotLab dùng 10 năm** trên EVE client 64-bit.
 > eye.py đọc UI tree JSON từ eve-memory-reader.dll → cây node có:
 > `pythonObjectTypeName` (tên class), `dictEntriesOfInterest` (attrs: _setText, _name, _lastValue...),

@@ -18,9 +18,10 @@ typedef struct {
 	BOOL is_bunch;
 	char* string_value;
 	char* unicode_value;
+	char* bunch_value;
 	INT int_value;
 	BOOL bool_value;
-	FLOAT float_value;
+	double float_value;
 } PythonDictValueRepresentation;
 
 typedef struct {
