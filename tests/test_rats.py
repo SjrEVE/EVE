@@ -115,7 +115,7 @@ ok("order_logi_before_dps", order.index(next(c for c in order if c["raw"] == "Fi
 c = classify("Harrowing Vedmak")
 ok("vedmak_ramp", c.get("ramp_per_cycle") == 4.0, str(c))
 c = classify("Striking Kikimora")
-ok("kikimora_ramp", c.get("ramp_per_cycle") == 2.0, str(c))
+ok("kikimora_ramp", c.get("ramp_per_cycle") == 2.5, str(c))
 c = classify("Blastlance Tessella")
 ok("tessella_no_switch", "Tessella" in (c.get("hull") or ""), str(c))
 

@@ -20,7 +20,7 @@ Skill này chỉ chứa FACT GAME. Khi cần ground UI tree/client thật, build
 ## Enemy DB đầy đủ (7 phe, mọi ship name + EWAR + priority lock) nằm ở `references/abyss-enemy-db.md` — ĐỌC TRƯỚC khi làm bất cứ việc gì liên quan rats/lock target. Code: fila_bot/rats.py (27 test PASS).
 
 ### Bổ sung từ nguồn sâu hơn (Gustav "All 18 Rooms" LJBCZ4fwxKA + Abyss Tracker cheat-sheet)
-- **Ramp rate Triglavian**: Vedmak/Damavik/Leshak 4%/cycle · Kikimora 2% · Drekavac 1% · Vila 0.75% (bot đếm cycle đổi target).  Tổng room types = 18 (6 Trig + 4 Drone + 5 Sleeper/Drifter + 3 Empire/Pirate).
+- **Ramp rate Triglavian**: Leshak 5%/cycle · Vedmak 4% · Drekavac 3.5% · Kikimora 2.5% · Damavik 1.5% · Vila 0.75% (bot đếm cycle đổi target). CẬP NHẬT 2026-11-10 — Boss xác nhận nguồn mới hơn Gustav LJBCZ4fwxKA (số cũ 4/4/4/2/1 đã lỗi). Tổng room types = 18 (6 Trig + 4 Drone + 5 Sleeper/Drifter + 3 Empire/Pirate).
 - **NO TARGET SWITCH**: Kikimora, Drone frig/BC (Tessella/Tessera), Vila Vedmak, Lucid Aegis/Escort — chúng cắn người đầu tiên rồi cắm mặt. Multibox dùng làm tank-magnet; bot solo: con đầu vào room là con KHÓA MÌNH — chọn spawn angle cho tank accept.
 - **Karen (Karybdis)**: cheat sheet Abyss Tracker = SPIRAL vào <30km (UniWiki FAQ: <10km orbit close nó không hit nổi). Goon wiki nói herd về gate — NGUỒN MÂU THUẪN, verify in-game trước khi tin 1 bên.
 - **Overmind tier mapping MÂU THUẪN**: UniWiki (Photic T1 → Endobenthic T6 theo thứ tự tier) vs AbyssTracker (Photic/Twilit/Hadal T0-3, Bathyic/Benthic/Endobenthic T4-6) — VERIFY in-game khi có client.

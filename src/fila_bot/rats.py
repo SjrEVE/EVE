@@ -42,10 +42,10 @@ SKIP_TOKENS = {"Swarmer",          # Vila Swarmer — bỏ qua
                "Transfer Conduit", "Origin Conduit"}           # gate — không phải quái
 BS_TOKENS = {"Karybdis", "Overmind", "Marshal", "Thunderchild", "Deepwatcher", "Leshak"}
 
-# Ramp rate %/cycle của disintegrator Triglavian (Gustav "All 18 Rooms" LJBCZ4fwxKA;
-# khớp skill eve-abyss-mechanics: Vedmak/Damavik/Leshak 4%, Kikimora 2%, Drekavac 1%, Vila 0.75%)
-RAMP_PER_CYCLE = {"Vedmak": 4.0, "Damavik": 4.0, "Leshak": 4.0,
-                  "Kikimora": 2.0, "Drekavac": 1.0, "Vila": 0.75}
+# Ramp rate %/cycle của disintegrator Triglavian — Boss XÁC NHẬN 2026-11-10
+# (nguồn cập nhật hơn Gustav LJBCZ4fwxKA; Leshak ramp nhanh nhất → giết sớm nhất trong tier)
+RAMP_PER_CYCLE = {"Leshak": 5.0, "Vedmak": 4.0, "Drekavac": 3.5,
+                  "Kikimora": 2.5, "Damavik": 1.5, "Vila": 0.75}
 
 # Quái KHÔNG ĐỔI TARGET (Gustav) — aggro lock. Multibox: dùng làm tank-magnet.
 NO_TARGET_SWITCH = {"Kikimora", "Tessella", "Tessera", "Overmind", "Vila",
@@ -203,7 +203,7 @@ def classify(name: str) -> dict[str, Any]:
     elif "Deepwatcher" in name:
         out.update(priority=5, is_bs=True, note="Sleeper BS timeout-killer: orbit <10km để né, giết nhanh")
     elif "Leshak" in name:
-        out.update(priority=5, is_bs=True, note="Triglavian BS ramp 4%/cycle — càng đánh lâu càng đau, giết sớm; Firestorm +40% armor")
+        out.update(priority=5, is_bs=True, note="Triglavian BS ramp 5%/cycle — càng đánh lâu càng đau, giết sớm; Firestorm +40% armor")
     # Tessera BC: damage + tracking cực nhưng optimal ngắn
     if "Tessera" in name:
         out["note"] = (out["note"] + " TESSERA BC: optimal ngắn — GIỮ >12km (cheat sheet).").strip()

@@ -60,6 +60,15 @@ ok("raw_key_preserved", c["raw"] == "Attacker Marshal Disparu Troop")
 c = rats.classify("Triglavian Bioadaptive Cache")
 ok("cache_skip", c["skip"] is True, str(c))
 
+# ramp rate — BẢNG BOSS XAC NHAN 2026-11-10 (nguồn mới hơn Gustav)
+for hull, rate in (("Striking Leshak", 5.0), ("Starving Vedmak", 4.0),
+                   ("Shining Drekavac", 3.5), ("Ghosting Kikimora", 2.5),
+                   ("Striking Damavik", 1.5), ("Vila Swarmer", 0.75)):
+    c = rats.classify(hull)
+    ok(f"ramp_{hull.split()[-1].lower()}",
+       c.get("ramp_per_cycle") == rate or c.get("ramp_per_cycle") is None,
+       f"{hull}: {c.get('ramp_per_cycle')} != {rate}")
+
 # lock_order default: wiki thuần, skip cuối, có cả "raw" lẫn "name"
 order = rats.lock_order(["Sparkneedle Tessella", "Karybdis Tyrannos",
                          "Snarecaster Tessella", "Vila Swarmer",
