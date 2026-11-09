@@ -31,6 +31,7 @@ class Supervisor:
                  release_all: Callable[[], Any] | None = None,
                  kill_switch: Callable[[], bool] | None = None,
                  max_session_s: float | None = None,
+                 runlog: Any | None = None,
                  clock: Callable[[], float] = time.monotonic) -> None:
         self.mode = mode
         self.execute = execute or (lambda acts: [])
@@ -38,6 +39,7 @@ class Supervisor:
         self.release_all = release_all or (lambda: None)
         self.kill_switch = kill_switch or (lambda: False)
         self.max_session_s = max_session_s
+        self.runlog = runlog
         self.clock = clock
         self.cmd_q: queue.Queue = queue.Queue()
         self.evt_q: queue.Queue = queue.Queue()
@@ -45,6 +47,7 @@ class Supervisor:
         self.started_at: float | None = None
         self.ticks = 0
         self.last_error: str | None = None
+        self.last_status: dict[str, Any] = {}
         self._thread: threading.Thread | None = None
         self._quit = threading.Event()
 
@@ -56,6 +59,13 @@ class Supervisor:
         if new != self.state:
             old = self.state
             self.state = new
+            if self.runlog is not None:
+                if new == "RUNNING" and old == "IDLE":
+                    name = getattr(self.mode, "name", None) or type(self.mode).__name__
+                    self.runlog.session_start(name)
+                elif new == "IDLE":
+                    self.runlog.session_end(reason or new, ticks=self.ticks,
+                                            status=self.last_status)
             self._emit("STATE_CHANGE", old=old, reason=reason)
 
     # ---------------- commands ----------------
@@ -135,11 +145,14 @@ class Supervisor:
             results = self.execute(acts) if acts else []
             self.ticks += 1
             status = self.mode.status() if hasattr(self.mode, "status") else {}
+            self.last_status = status
             self._emit("TICK", ticks=self.ticks, phase=getattr(self.mode, "phase", None),
                        actions=len(acts), results=results, status=status)
         except Exception as e:  # noqa: BLE001
             self.release_all()
             self.last_error = repr(e)
+            if self.runlog is not None:
+                self.runlog.crash(repr(e))
             self._emit("CRASH", error=repr(e), trace=traceback.format_exc(limit=5))
             self._set("PAUSED", "crash")
             return

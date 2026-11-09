@@ -1,6 +1,7 @@
 # proprietary / cục bộ — không push
 bus/
 logs/
+runs/
 *.log
 ui_dump.json
 ui_dump*.json

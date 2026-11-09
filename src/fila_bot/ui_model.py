@@ -10,6 +10,8 @@ from collections import deque
 from pathlib import Path
 from typing import Any, Callable
 
+from .runlog import read_stats
+
 MODES = ("abyss", "distribution", "security")
 MODE_LABELS = {"abyss": "Abyss", "distribution": "Distribution (courier)",
                "security": "Security mission"}
@@ -20,18 +22,21 @@ class ModeUnavailable(Exception):
 
 
 def build_supervisor(mode: str, sim: bool = True, dry: bool = True, dll: str | None = None,
-                     max_hours: float | None = 4.0, bus_dir: str | None = None) -> Any:
+                     max_hours: float | None = 4.0, bus_dir: str | None = None,
+                     runs_dir: str | Path | None = None) -> Any:
     from . import input as inp
     from .bus import FileBus
     from .config import Config
     from .modes.abyss import AbyssMode, DemoSim
     from .reflex import Bot
+    from .runlog import RunLog
     from .runner import Supervisor
 
     if mode not in MODES:
         raise ModeUnavailable(f"mode lạ: {mode}")
     rel = lambda: inp.release_all(dry_run=sim or dry)  # noqa: E731
     max_s = max_hours * 3600 if max_hours else None
+    runlog = RunLog(runs_dir or Path(__file__).resolve().parents[2] / "runs")
     if mode != "abyss":
         if mode == "distribution":
             from .modes.distribution import DistributionMode
@@ -48,7 +53,8 @@ def build_supervisor(mode: str, sim: bool = True, dry: bool = True, dll: str | N
                 execute_fn = runner.apply
             mode_obj: Any = DistributionMode()
             return Supervisor(mode_obj, execute=execute_fn, refresh=refresh, release_all=rel,
-                              kill_switch=inp.kill_switch_pressed, max_session_s=max_s)
+                              kill_switch=inp.kill_switch_pressed, max_session_s=max_s,
+                              runlog=runlog)
         else:
             if not sim:
                 raise ModeUnavailable(
@@ -59,7 +65,8 @@ def build_supervisor(mode: str, sim: bool = True, dry: bool = True, dll: str | N
             w = SecSim()
             mode_obj = SecurityMode(runner=w)
             return Supervisor(mode_obj, execute=w.apply, refresh=None, release_all=rel,
-                              kill_switch=inp.kill_switch_pressed, max_session_s=max_s)
+                              kill_switch=inp.kill_switch_pressed, max_session_s=max_s,
+                              runlog=runlog)
     bus = FileBus(bus_dir or Path(__file__).resolve().parents[2] / "bus")
     if sim:
         ex: Any = DemoSim()
@@ -75,15 +82,18 @@ def build_supervisor(mode: str, sim: bool = True, dry: bool = True, dll: str | N
     return Supervisor(mode_obj, execute=execute, refresh=refresh,
                       release_all=lambda: inp.release_all(dry_run=sim or dry),
                       kill_switch=inp.kill_switch_pressed,
-                      max_session_s=max_hours * 3600 if max_hours else None)
+                      max_session_s=max_hours * 3600 if max_hours else None,
+                      runlog=runlog)
 
 
 class UiModel:
     def __init__(self, factory: Callable = build_supervisor, threaded: bool = True,
-                 tick: float = 0.3, log_max: int = 200) -> None:
+                 tick: float = 0.3, log_max: int = 200,
+                 runs_dir: str | Path | None = None) -> None:
         self.factory = factory
         self.threaded = threaded
         self.tick = tick
+        self.runs_dir = runs_dir or Path(__file__).resolve().parents[2] / "runs"
         self.mode = "abyss"
         self.sim = True
         self.dry = True
@@ -186,6 +196,7 @@ class UiModel:
             "phase": self.phase or "-",
             "banner": banner,
             "danger": bool(self.error) or self.no_escape,
+            "stats": read_stats(self.runs_dir),
             "runs": st.get("runs", 0),
             "room": st.get("room", 0),
             "hp": st.get("hp"),

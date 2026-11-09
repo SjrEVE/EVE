@@ -84,9 +84,13 @@ def run_window() -> int:
     def refresh():
         m.poll()
         v = m.view()
+        stats = v.get("stats") or {}
         info.set(f"Trang thai: {v['state']}   Phase: {v['phase']}   Room: {v['room']}\n"
                  f"Run xong: {v['runs']}   HP: {v['hp']}   Filament: {v['filaments']}   "
-                 f"Thoi gian: {v['elapsed']}")
+                 f"Thoi gian: {v['elapsed']}\n"
+                 f"Tong: {stats.get('sessions', 0)} phien / {stats.get('completed', 0)} run, "
+                 f"{stats.get('crashes', 0)} crash"
+                 + (f"   Lan cuoi: {stats.get('last_reason')}" if stats.get("last_reason") else ""))
         banner.set(v["banner"])
         b_start.state(["!disabled"] if v["can_start"] else ["disabled"])
         b_pause.config(text=v["pause_label"])
