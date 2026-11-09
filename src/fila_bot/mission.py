@@ -17,7 +17,7 @@ Ground 2026-11-09 (TQ, Photon UI) — xem docs/EVE_UI_TREE_ATTRS.md:
 - Route: InfoPanelRoute → EveLabelMedium._name=noDestinationLabel = "No Destination",
   hoặc các node `AutopilotDestinationIcon` khi có route
 - Agent dialogue (khi nói chuyện với agent): `AgentDialogueWindow`
-- Mission đang nhận: InfoPanelAgentMissions → `MissionEntry`
+- Mission đang nhận: InfoPanelJobBoard → `AgentMissionInfoPanelEntry` (layout cũ: InfoPanelAgentMissions → `MissionEntry`)
 - Agent list trong station: `AgentsPanel` (container rỗng khi chưa load)
 """
 from __future__ import annotations
@@ -161,19 +161,24 @@ class MissionEye:
                     texts.append(clean)
         return texts
 
+    # Ground client TQ 2026-11-09 (dumps/g3_accepted_170325.json): sau Accept, mission
+    # nằm ở InfoPanelJobBoard → AgentMissionInfoPanelEntry (_name='agent_missions:<agentID>'),
+    # tiêu đề ở EveLabelLarge._setText. InfoPanelAgentMissions/MissionEntry là layout cũ (fallback).
+    MISSION_PANEL_TYPES = ("InfoPanelJobBoard", "InfoPanelAgentMissions")
+    MISSION_ENTRY_TYPES = ("AgentMissionInfoPanelEntry", "MissionEntry")
+
     def mission_entries(self) -> list[str]:
-        """Mission đang active (InfoPanelAgentMissions → MissionEntry)."""
-        panels = self._find_type("InfoPanelAgentMissions")
-        if not panels:
-            return []
+        """Tiêu đề các mission đang active trong info panel (rỗng nếu không thấy)."""
         out: list[str] = []
-        for n in self.eye.walk(panels[0]):
-            if n.get("type") != "MissionEntry":
-                continue
-            texts = [_strip_tags(t) for _, t in self._labels(n)]
-            texts = [t for t in texts if t]
-            if texts:
-                out.append(texts[0])
+        for ptype in self.MISSION_PANEL_TYPES:
+            for panel in self._find_type(ptype):
+                for n in self.eye.walk(panel):
+                    if n.get("type") not in self.MISSION_ENTRY_TYPES:
+                        continue
+                    texts = [_strip_tags(t) for _, t in self._labels(n)]
+                    texts = [t for t in texts if t]
+                    if texts and texts[0] not in out:
+                        out.append(texts[0])
         return out
 
     # ---------------- overview: gate / beacon ----------------

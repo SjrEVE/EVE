@@ -142,4 +142,16 @@ ok("menu_entry_xy_by_text", em.menu_entry_xy("Close") == (1008, 323), str(em.men
 ok("menu_entry_xy_missing", em.menu_entry_xy("Warp to Within") is None,
    "không được trả toạ độ khi menu không có entry đó")
 
+# ---------------- G3 GROUND: mission đã Accept (dump thật g3_accepted_170325) ----------------
+# Client TQ 2026-11-09: InfoPanelJobBoard → AgentMissionInfoPanelEntry → EveLabelLarge._setText
+ema = Eye.__new__(Eye)
+for _k in ("root", "_pos", "_pos_root"):
+    setattr(ema, _k, None)
+ema.root = json.loads((ROOT / "tests" / "fixtures" / "ui_tree_mission_accepted.json").read_text(encoding="utf-8"))
+mea = MissionEye(ema)
+ok("g3_mission_entries_jobboard", mea.mission_entries() == ["Rancorous Researcher (1 of 5)"],
+   str(mea.mission_entries()))
+ok("g3_state_has_mission", mea.state().mission_entries == ["Rancorous Researcher (1 of 5)"],
+   str(mea.state().mission_entries))
+
 print(f"=> {PASS} test PASS tổng (mission + station + menu)")

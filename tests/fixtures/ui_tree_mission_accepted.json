@@ -1,0 +1,588 @@
+{
+ "type": "UIRoot",
+ "attrs": {},
+ "children": [
+  {
+   "type": "InfoPanelContainer",
+   "attrs": {},
+   "children": [
+    {
+     "address": 2844136525216,
+     "type": "InfoPanelJobBoard",
+     "attrs": {
+      "children": null,
+      "_hint": null,
+      "_height": 83,
+      "_bgTexturePath": null,
+      "_displayY": 207,
+      "_displayHeight": 83,
+      "_displayX": 0,
+      "_displayWidth": 312
+     },
+     "children": [
+      {
+       "address": 2844136525160,
+       "type": "Container",
+       "attrs": {
+        "_displayHeight": 28,
+        "_top": 0,
+        "_hint": null,
+        "children": null,
+        "_displayWidth": 312,
+        "_left": 0,
+        "_height": 28,
+        "_bgTexturePath": null,
+        "_width": 0,
+        "_displayY": 0,
+        "_name": "topCont",
+        "_displayX": 0
+       },
+       "children": [
+        {
+         "address": 2844136525664,
+         "type": "Container",
+         "attrs": {
+          "_displayHeight": 28,
+          "_top": 0,
+          "_hint": null,
+          "children": null,
+          "_displayWidth": 56,
+          "_left": 0,
+          "_height": 0,
+          "_bgTexturePath": null,
+          "_width": 56,
+          "_displayY": 0,
+          "_name": "headerBtnCont",
+          "_displayX": 0
+         },
+         "children": [
+          {
+           "address": 2844146587016,
+           "type": "Container",
+           "attrs": {
+            "_displayHeight": 28,
+            "_top": 0,
+            "_hint": null,
+            "children": null,
+            "_displayWidth": 28,
+            "_left": 0,
+            "_height": 28,
+            "_bgTexturePath": null,
+            "_width": 28,
+            "_displayY": 0,
+            "_displayX": 28
+           },
+           "children": [
+            {
+             "address": 2844104766352,
+             "type": "ButtonIcon",
+             "attrs": {
+              "_top": 0,
+              "_hint": null,
+              "children": null,
+              "texturePath": null,
+              "_displayWidth": 18,
+              "_left": 0,
+              "_height": 18,
+              "_displayY": 5,
+              "_bgTexturePath": null,
+              "_width": 18,
+              "_displayHeight": 18,
+              "_displayX": 5
+             },
+             "children": [
+              {
+               "address": 2844104733864,
+               "type": "Sprite",
+               "attrs": {
+                "_displayHeight": 18,
+                "_top": 0,
+                "_hint": null,
+                "_displayWidth": 18,
+                "_displayX": 0,
+                "_left": 0,
+                "_height": 18,
+                "_width": 18,
+                "_displayY": 0,
+                "_name": "icon",
+                "_color": {
+                 "aPercent": 75,
+                 "rPercent": 100,
+                 "gPercent": 100,
+                 "bPercent": 100
+                }
+               },
+               "children": []
+              },
+              {
+               "address": 2844104733808,
+               "type": "Container",
+               "attrs": {
+                "_displayHeight": 18,
+                "_hint": null,
+                "children": null,
+                "_displayWidth": 18,
+                "_bgTexturePath": null,
+                "_displayY": 0,
+                "_name": "bgCont",
+                "_displayX": 0
+               },
+               "children": []
+              }
+             ]
+            }
+           ]
+          },
+          {
+           "address": 2844529584000,
+           "type": "ExpandButton",
+           "attrs": {
+            "_displayHeight": 28,
+            "_top": 0,
+            "_hint": null,
+            "children": null,
+            "_displayWidth": 28,
+            "_left": 0,
+            "_height": 0,
+            "_bgTexturePath": null,
+            "_width": 28,
+            "_displayY": 0,
+            "_displayX": 0
+           },
+           "children": [
+            {
+             "address": 2843431042128,
+             "type": "Sprite",
+             "attrs": {
+              "_displayHeight": 7,
+              "_top": 0,
+              "_hint": null,
+              "_displayWidth": 7,
+              "_displayX": 11,
+              "_left": 0,
+              "_height": 7,
+              "_width": 7,
+              "_displayY": 11
+             },
+             "children": []
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "address": 2844136522696,
+         "type": "Container",
+         "attrs": {
+          "_displayHeight": 28,
+          "_hint": null,
+          "children": null,
+          "_displayWidth": 256,
+          "_bgTexturePath": null,
+          "_displayY": 0,
+          "_name": "headerCont",
+          "_displayX": 56
+         },
+         "children": [
+          {
+           "address": 2843431041904,
+           "type": "EveCaptionSmall",
+           "attrs": {
+            "_width": 92,
+            "_hint": null,
+            "_displayWidth": 92,
+            "_setText": "Opportunities",
+            "_height": 24,
+            "_displayX": 0,
+            "_displayHeight": 24,
+            "_displayY": 2,
+            "_name": "title",
+            "_color": {
+             "aPercent": 90,
+             "rPercent": 100,
+             "gPercent": 100,
+             "bPercent": 100
+            }
+           },
+           "children": []
+          }
+         ]
+        },
+        {
+         "address": 2844136524712,
+         "type": "Container",
+         "attrs": {
+          "_displayHeight": 28,
+          "_hint": null,
+          "children": null,
+          "_displayWidth": 256,
+          "_bgTexturePath": null,
+          "_displayY": 0,
+          "_name": "headerCompactCont",
+          "_displayX": 56
+         },
+         "children": []
+        }
+       ]
+      },
+      {
+       "address": 2843431041680,
+       "type": "ContainerAutoSize",
+       "attrs": {
+        "_displayHeight": 45,
+        "children": null,
+        "_hint": null,
+        "_displayWidth": 256,
+        "_height": 45,
+        "_bgTexturePath": null,
+        "_displayY": 28,
+        "_name": "mainCont",
+        "_displayX": 56
+       },
+       "children": [
+        {
+         "address": 2843431041120,
+         "type": "ScrollContainer",
+         "attrs": {
+          "_displayHeight": 45,
+          "_hint": null,
+          "children": null,
+          "_height": 45,
+          "_displayWidth": 256,
+          "_bgTexturePath": null,
+          "_displayY": 0,
+          "_name": "missions_scroll_container",
+          "_displayX": 0
+         },
+         "children": [
+          {
+           "address": 2844204971176,
+           "type": "Container",
+           "attrs": {
+            "_displayHeight": 45,
+            "_hint": null,
+            "children": null,
+            "_displayWidth": 256,
+            "_bgTexturePath": null,
+            "_displayY": 0,
+            "_name": "clipCont",
+            "_displayX": 0
+           },
+           "children": [
+            {
+             "address": 2844204970280,
+             "type": "ContainerAutoSize",
+             "attrs": {
+              "_displayHeight": 45,
+              "children": null,
+              "_hint": null,
+              "_displayWidth": 256,
+              "_height": 45,
+              "_bgTexturePath": null,
+              "_displayY": 0,
+              "_name": "mainCont",
+              "_displayX": 0
+             },
+             "children": [
+              {
+               "address": 2844100720120,
+               "type": "AgentMissionInfoPanelEntry",
+               "attrs": {
+                "_displayHeight": 37,
+                "_displayY": 4,
+                "_hint": null,
+                "children": null,
+                "_displayWidth": 256,
+                "_height": 37,
+                "_bgTexturePath": null,
+                "_name": "agent_missions:3010891",
+                "_displayX": 0
+               },
+               "children": [
+                {
+                 "address": 2844100718720,
+                 "type": "ContainerAutoSize",
+                 "attrs": {
+                  "_displayHeight": 37,
+                  "children": null,
+                  "_hint": null,
+                  "_displayWidth": 256,
+                  "_height": 37,
+                  "_bgTexturePath": null,
+                  "_displayY": 0,
+                  "_name": "header_container",
+                  "_displayX": 0
+                 },
+                 "children": [
+                  {
+                   "address": 2844100721072,
+                   "type": "ContainerAutoSize",
+                   "attrs": {
+                    "_displayHeight": 21,
+                    "children": null,
+                    "_hint": null,
+                    "_displayWidth": 240,
+                    "_height": 21,
+                    "_bgTexturePath": null,
+                    "_displayY": 8,
+                    "_displayX": 8
+                   },
+                   "children": [
+                    {
+                     "address": 2844100720512,
+                     "type": "ContainerAutoSize",
+                     "attrs": {
+                      "_displayHeight": 21,
+                      "_top": 0,
+                      "_hint": null,
+                      "children": null,
+                      "_displayWidth": 16,
+                      "_left": 0,
+                      "_height": 16,
+                      "_bgTexturePath": null,
+                      "_width": 16,
+                      "_displayY": 0,
+                      "_displayX": 0
+                     },
+                     "children": [
+                      {
+                       "address": 2844100720960,
+                       "type": "ButtonIcon",
+                       "attrs": {
+                        "_top": 0,
+                        "_hint": "View Details",
+                        "children": null,
+                        "texturePath": null,
+                        "_displayWidth": 16,
+                        "_left": 0,
+                        "_height": 16,
+                        "_displayY": 3,
+                        "_bgTexturePath": null,
+                        "_width": 16,
+                        "_displayHeight": 16,
+                        "_name": "view_details_button",
+                        "_displayX": 0
+                       },
+                       "children": [
+                        {
+                         "address": 2844100721240,
+                         "type": "Sprite",
+                         "attrs": {
+                          "_displayHeight": 16,
+                          "_top": 0,
+                          "_hint": null,
+                          "_displayWidth": 16,
+                          "_displayX": 0,
+                          "_left": 0,
+                          "_height": 16,
+                          "_width": 16,
+                          "_displayY": 0,
+                          "_name": "icon",
+                          "_color": {
+                           "aPercent": 75,
+                           "rPercent": 100,
+                           "gPercent": 100,
+                           "bPercent": 100
+                          }
+                         },
+                         "children": []
+                        },
+                        {
+                         "address": 2844100720456,
+                         "type": "Container",
+                         "attrs": {
+                          "_displayHeight": 16,
+                          "_hint": null,
+                          "children": null,
+                          "_displayWidth": 16,
+                          "_bgTexturePath": null,
+                          "_displayY": 0,
+                          "_name": "bgCont",
+                          "_displayX": 0
+                         },
+                         "children": []
+                        }
+                       ]
+                      }
+                     ]
+                    },
+                    {
+                     "address": 2844326842208,
+                     "type": "ContainerAutoSize",
+                     "attrs": {
+                      "_displayHeight": 21,
+                      "_top": 0,
+                      "_hint": null,
+                      "children": null,
+                      "_displayWidth": 16,
+                      "_left": 0,
+                      "_height": 24,
+                      "_bgTexturePath": null,
+                      "_width": 16,
+                      "_displayY": 0,
+                      "_displayX": 224,
+                      "_display": true
+                     },
+                     "children": [
+                      {
+                       "address": 2844326841424,
+                       "type": "MenuButtonIcon",
+                       "attrs": {
+                        "_top": 0,
+                        "_hint": "(null)",
+                        "children": null,
+                        "texturePath": null,
+                        "_displayWidth": 16,
+                        "_left": 0,
+                        "_height": 24,
+                        "_displayY": -2,
+                        "_bgTexturePath": null,
+                        "_width": 16,
+                        "_displayHeight": 25,
+                        "_name": "options_menu_button",
+                        "_displayX": 0
+                       },
+                       "children": [
+                        {
+                         "address": 2844326839856,
+                         "type": "Sprite",
+                         "attrs": {
+                          "_displayHeight": 16,
+                          "_top": 0,
+                          "_hint": null,
+                          "_displayWidth": 16,
+                          "_displayX": 0,
+                          "_left": 0,
+                          "_height": 16,
+                          "_width": 16,
+                          "_displayY": 5,
+                          "_name": "icon",
+                          "_color": {
+                           "aPercent": 75,
+                           "rPercent": 100,
+                           "gPercent": 100,
+                           "bPercent": 100
+                          }
+                         },
+                         "children": []
+                        },
+                        {
+                         "address": 2844326839688,
+                         "type": "Container",
+                         "attrs": {
+                          "_displayHeight": 25,
+                          "_hint": null,
+                          "children": null,
+                          "_displayWidth": 16,
+                          "_bgTexturePath": null,
+                          "_displayY": 0,
+                          "_name": "bgCont",
+                          "_displayX": 0
+                         },
+                         "children": []
+                        }
+                       ]
+                      }
+                     ]
+                    },
+                    {
+                     "address": 2844326838904,
+                     "type": "ContainerAutoSize",
+                     "attrs": {
+                      "_displayHeight": 21,
+                      "children": null,
+                      "_hint": null,
+                      "_displayWidth": 0,
+                      "_bgTexturePath": null,
+                      "_displayY": 0,
+                      "_displayX": 216
+                     },
+                     "children": []
+                    },
+                    {
+                     "address": 2844326840472,
+                     "type": "ContainerAutoSize",
+                     "attrs": {
+                      "_displayHeight": 21,
+                      "children": null,
+                      "_hint": null,
+                      "_displayWidth": 192,
+                      "_height": 21,
+                      "_bgTexturePath": null,
+                      "_displayY": 0,
+                      "_displayX": 24
+                     },
+                     "children": [
+                      {
+                       "address": 2844326841648,
+                       "type": "EveLabelLarge",
+                       "attrs": {
+                        "_hint": null,
+                        "_displayWidth": 192,
+                        "_height": 21,
+                        "_setText": "Rancorous Researcher (1 of 5)",
+                        "_displayX": 0,
+                        "_displayY": 0,
+                        "_displayHeight": 21,
+                        "_color": {
+                         "aPercent": 90,
+                         "rPercent": 100,
+                         "gPercent": 100,
+                         "bPercent": 100
+                        }
+                       },
+                       "children": []
+                      }
+                     ]
+                    }
+                   ]
+                  },
+                  {
+                   "address": 2844326840192,
+                   "type": "Container",
+                   "attrs": {
+                    "_displayHeight": 37,
+                    "_hint": null,
+                    "children": null,
+                    "_displayWidth": 256,
+                    "_bgTexturePath": null,
+                    "_displayY": 0,
+                    "_name": "progress_fill_container",
+                    "_displayX": 0
+                   },
+                   "children": []
+                  }
+                 ]
+                },
+                {
+                 "address": 2844326840584,
+                 "type": "ContainerAutoSize",
+                 "attrs": {
+                  "_displayHeight": 0,
+                  "children": null,
+                  "_hint": null,
+                  "_displayWidth": 256,
+                  "_height": 0,
+                  "_bgTexturePath": null,
+                  "_displayY": 37,
+                  "_name": "content_container",
+                  "_displayX": 0
+                 },
+                 "children": []
+                }
+               ]
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
