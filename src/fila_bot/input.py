@@ -19,6 +19,23 @@ def humanized_delay(base: float = _DELAY_BASE) -> float:
     return base * (0.5 + random.random())
 
 
+# P2-4: kill-switch — Ctrl+Shift+Space, poll bằng GetAsyncKeyState (không cài hook toàn cục,
+# không cần quyền admin; hook của EVE dễ đè/không nhận). Test truyền get_async giả.
+VK_CONTROL_L, VK_SHIFT_L, VK_SPACE_ = 0x11, 0x10, 0x20
+
+
+def kill_switch_pressed(get_async: Any = None) -> bool:
+    """True khi Ctrl+Shift+Space đang được giữ (poll mỗi tick)."""
+    if get_async is None:
+        import ctypes
+        get_async = ctypes.windll.user32.GetAsyncKeyState
+
+    def down(vk: int) -> bool:
+        return bool(get_async(vk) & 0x8000)
+
+    return down(VK_CONTROL_L) and down(VK_SHIFT_L) and down(VK_SPACE_)
+
+
 def send_click(x: int, y: int, dry_run: bool = False, humanize: bool = True) -> dict[str, Any]:
     if dry_run:
         return {"ok": True, "x": x, "y": y, "dry": True}

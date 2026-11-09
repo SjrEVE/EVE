@@ -54,11 +54,15 @@ Không có "chỉ huy ngoài" — KHÔNG LLM, KHÔNG cloud, KHÔNG subscription.
 | `humanize` | true | jitter + (kế hoạch) trajectory cong |
 | `tick_interval` | 0.3 | chu kỳ tick |
 | `warn_timer_left` | 300 | mốc báo timer |
+| `loot_stop_left` | 120 | P0-6: còn ≤120s → ngừng loot, đi gate |
+| `min_room_left` | 180 | P0-6: không vào room mới nếu còn <180s |
 | `max_session_hours` | 8 | khuyến nghị EVE Master: không 24/7 |
 
 ## 6. An toàn
 
 1. SURVIVAL là floor — không tắt được.
-2. Kill-switch nóng: Ctrl+Shift+Space (P2-4) + PAUSE/STOP từ UI.
+2. Kill-switch nóng: **Ctrl+Shift+Space** (P2-4, poll `GetAsyncKeyState` mỗi tick — không hook,
+   không cần admin; `--no-killswitch` để tắt) + PAUSE/STOP từ UI.
 3. Fail-closed: thiếu ground → dừng + log, không đoán.
-4. CHỈ test server (Singularity) + acc rỗng. Live = EULA 2-strike.
+4. Ưu tiên Singularity + acc rỗng. Khi SiSi khoá lịch: chủ máy quyết định chạy TQ bằng
+   **acc alpha mới** (không dùng acc chính) — rủi ro EULA do chủ máy chấp nhận.

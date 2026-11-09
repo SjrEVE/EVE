@@ -58,7 +58,8 @@ class SimExecutor:
 
 
 class Bot:
-    def __init__(self, bus: FileBus, config: Config, executor: SimExecutor | None = None) -> None:
+    def __init__(self, bus: FileBus, config: Config, executor: SimExecutor | None = None,
+                 role: str = "solo") -> None:
         self.bus = bus
         self.cfg = config
         self.ex = executor or SimExecutor()
@@ -71,10 +72,19 @@ class Bot:
         self._last_emitted: str | None = None
         self._prev_phase: str | None = None   # phase trước khi rơi vào UNKNOWN (để biết trong/ngoài abyss)
         self._last_guard_action: str | None = None
+        self.loot_stopped = False          # P0-6: đã ngừng loot vì timer
+        self._room_seen = getattr(self.ex, "room", 0)
         from .guards import GuardManager      # local import tránh vòng
         self.guards = GuardManager()
         from .combat_brain import CombatBrain  # P1-1: rats/rooms vào vòng tick
         self.combat = CombatBrain()
+        # P1-2: trio role (tank/dps/logi) — solo = không dùng
+        from .trio import TrioRole
+        self.trio = TrioRole(role) if role in ("tank", "dps", "logi") else None
+        # P1-3: drone manager chạy mỗi tick (chỉ advisory khi chưa ground node)
+        from .drone import DroneManager
+        self.drones = DroneManager()
+        self.drone_state: dict[str, Any] = {}
 
     def _apply_guard_action(self, act: dict) -> None:
         """Guard nêu action → thực hiện hành động an toàn tương ứng + emit event."""
@@ -340,6 +350,52 @@ class Bot:
                 self.bus.emit("TIMER_WARN", timer_left_s=int(max(left, 0)),
                               phase=self.ex.phase)
                 self.timer_warned = True
+
+        # 3b) P0-6: endgame timer — còn <=120s thì NGỪNG loot (loot lâu hơn thời gian còn lại = chết)
+        if self.abby_started is not None and not self.loot_stopped:
+            left = 1200 - (time.time() - self.abby_started)
+            if left <= self.cfg.loot_stop_left:
+                self.ex.want_loot = False
+                self.loot_stopped = True
+                self.bus.emit("TIMER_LOOT_STOP", timer_left_s=int(max(left, 0)),
+                              reason=f"còn {int(max(left,0))}s <= {self.cfg.loot_stop_left}s — "
+                                     "bỏ loot, đi gate (loot là thứ giết người ở phút cuối)")
+
+        # 3c) P0-6: KHÔNG vào room mới nếu không đủ thời gian clear + đi gate
+        room_now = getattr(self.ex, "room", self._room_seen)
+        if self.abby_started is not None and room_now != self._room_seen:
+            left = 1200 - (time.time() - self.abby_started)
+            self._room_seen = room_now
+            if hasattr(self.trio, "new_room") and self.trio is not None:
+                self.trio.new_room()
+            if left < self.cfg.min_room_left and self.ex.phase in IN_ABYSS:
+                self.bus.emit("MAYDAY", reason=f"vào room {room_now} khi còn {int(left)}s "
+                              f"< {self.cfg.min_room_left}s — không đủ thời gian, thoát an toàn")
+                self.safe_exit(reason=f"timer {int(left)}s không đủ cho room mới")
+
+        # 3d) P1-2: trio role tick (tank/dps/logi) — chỉ advisory + action đã ground
+        if self.trio is not None and str(self.ex.phase).endswith("_FIGHT"):
+            texts = self.ex.overview_texts() if hasattr(self.ex, "overview_texts") else []
+            st = {
+                "hp": getattr(self.ex, "hp", 1.0), "cap": getattr(self.ex, "cap", 1.0),
+                "room_entry": True, "moved_this_room": True,
+                "kikimora_count": sum("kikimora" in t.lower() for t in texts),
+                "tank_hp": getattr(self.ex, "hp", 1.0),
+                "dist_to_tank_km": 0.0, "current_target": None, "want_target": None,
+            }
+            for act in self.trio.tick(st):
+                self.bus.emit("TRIO", role=self.trio.role, **act)
+
+        # 3e) P1-3: drone manager — update mỗi tick, advisory (node drone chưa ground)
+        dst = {
+            "drones_in_space": getattr(self.ex, "drones_in_space", 0),
+            "drones_hp_avg": getattr(self.ex, "drones_hp_avg", 1.0),
+            "redboxed": bool(getattr(self.ex, "targets", 0)),
+        }
+        self.drone_state = dst
+        dact = self.drones.update(dst)
+        if dact:
+            self.bus.emit("DRONE", state=self.drones.state, **dact)
 
         # 4) UNKNOWN quá lâu → MAYDAY + safe_exit
         if self.ex.phase == "UNKNOWN":

@@ -13,6 +13,8 @@ class Config:
         self.humanize: bool = True
         self.tick_interval: float = 0.3
         self.warn_timer_left: int = 300
+        self.loot_stop_left: int = 120     # P0-6: còn <=120s → NGỪNG loot, đi gate
+        self.min_room_left: int = 180      # P0-6: không vào room mới nếu còn <180s
         self.sim_mode: bool = True
         for k, v in overrides.items():
             if not hasattr(self, k):
@@ -28,6 +30,8 @@ class Config:
                 "humanize": self.humanize,
                 "tick_interval": self.tick_interval,
                 "warn_timer_left": self.warn_timer_left,
+                "loot_stop_left": self.loot_stop_left,
+                "min_room_left": self.min_room_left,
                 "sim_mode": self.sim_mode,
             }
 

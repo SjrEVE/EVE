@@ -228,6 +228,8 @@ ok("timer_warn_fires", len(tw) >= 1 and tw[-1].get("timer_left_s", 9999) <= 60, 
 
 # ---------- 10. DEATH GUARDS qua tick thật ----------
 # DEATH #3: GATE khi drone ngoài → REJECT
+# (reset timer: test 9 cố tình để còn 30s — P0-6 sẽ chặn vào room mới, không liên quan guard này)
+bot.abby_started = time.time() - 300.0    # còn 900s
 bot.ex.phase = "ROOM1_CLEARED"
 bot.ex.room = 1
 bot.ex.hp = 1.0
