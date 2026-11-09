@@ -15,16 +15,21 @@ BUTTONS = {
     "decline": ("decline",),
     "delay": ("delay",),
     "complete": ("complete mission",),
+    "quit": ("quit mission",),
     "close": ("close",),
 }
 _M3 = re.compile(r"([0-9][0-9.,]*)\s*m(?:3|\u00b3)", re.I)
 # G2 GROUND 2026-11-09 (fixture ui_tree_agent_offer.json): nut nam trong ButtonGroup,
 # Button._name = AcceptMission_Button / DeclineMission_Button / DeferMission_Button.
-# Complete/Request CHUA thay tren client -> chi fallback theo text (fail-closed).
+# Catalog 42 dump (docs/UI_CATALOG.md): them CompleteMission_Button / QuitMission_Button /
+# CloseAgentConversation_Button. Request CHUA thay -> chi fallback theo text (fail-closed).
 BUTTON_NAMES = {
     "accept": ("AcceptMission_Button",),
     "decline": ("DeclineMission_Button",),
     "delay": ("DeferMission_Button",),
+    "complete": ("CompleteMission_Button",),
+    "quit": ("QuitMission_Button",),
+    "close": ("CloseAgentConversation_Button",),
 }
 # DLL thay ky tu ngoai ASCII bang ' ' -> 'm³' thanh 'm ' : "1 x Encoded Data Chip (0.1 m )"
 _CARGO = re.compile(r"Cargo\s+(\d+)\s*x\s+(.+?)\s*\(\s*([0-9][0-9.,]*)\s*m", re.I)

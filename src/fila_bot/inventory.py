@@ -13,6 +13,7 @@ WINDOW_TYPES = ("InventoryPrimary", "ActiveShipCargo")
 CONTAINER_TYPES = ("ShipCargo", "ShipDroneBay", "ShipGeneralMiningHold", "StationItems",
                    "ShipFleetHangar", "StructureItemHangar")
 _NUM = r"([0-9][0-9.,\s]*)"
+TREE_TYPES = ("TreeViewEntryWithTag", "TreeViewEntryInventoryCargo", "TreeViewEntryInventory")
 
 
 def _text(n: dict[str, Any]) -> str | None:
@@ -109,3 +110,31 @@ class InventoryEye:
         if not cap or cap.get("max") is None:
             return None
         return cap["max"] - cap["used"] >= volume_m3
+
+    def tree_entries(self) -> list[dict[str, Any]] | None:
+        """Cay hangar ben trai: [{name, label, center}]. Catalog g4_inventory_171356:
+        TreeViewEntryWithTag (ItemHangar/StationShips), TreeViewEntryInventoryCargo (ShipHangar
+        = tau dang lai), TreeViewEntryInventory (ShipDroneBay...). center = topCont_<name>
+        (node cha cao ca phan childCont nen KHONG dung tam node cha)."""
+        w = self.window()
+        if w is None:
+            return None
+        out: list[dict[str, Any]] = []
+        for n in self.eye.walk(w):
+            if n.get("type") not in TREE_TYPES:
+                continue
+            name = (n.get("attrs") or {}).get("_name")
+            top = next((c for c in (n.get("children") or [])
+                        if (c.get("attrs") or {}).get("_name") == f"topCont_{name}"), None)
+            if not name or top is None:
+                continue
+            label = next((t for t in (_text(x) for x in self.eye.walk(top)) if t), None)
+            out.append({"name": name, "label": label, "center": self.eye.abs_center(top)})
+        return out
+
+    def tree_entry_xy(self, name: str) -> tuple[int, int] | None:
+        """Toa do entry theo _name dung (vd 'ItemHangar', 'ShipHangar'). Khong thay -> None."""
+        for e in self.tree_entries() or []:
+            if e["name"] == name:
+                return e["center"]
+        return None

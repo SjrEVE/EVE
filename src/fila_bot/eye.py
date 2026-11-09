@@ -365,6 +365,46 @@ class Eye:
                             "center": self.abs_center(w)}
         return None
 
+    # ---------------- popup modal (catalog: g7_after_manual_180231 'Connection Lost') ----------------
+    def message_boxes(self) -> list[dict[str, Any]]:
+        """MessageBox (_name='modal') + nut trong ButtonGroup. Port Viir parseMessageBox.
+        Tra [{texts, buttons: [{text, name, center}], center}]."""
+        out: list[dict[str, Any]] = []
+        for w in self._find_by_type("MessageBox", select_many=True) or []:
+            buttons = []
+            for g in self.walk(w):
+                if "ButtonGroup" not in str(g.get("type", "")):
+                    continue
+                for b in self.walk(g):
+                    if b is g or "Button" not in str(b.get("type", "")) or "Group" in str(b.get("type")):
+                        continue
+                    tx = self._texts_of_node(b)
+                    buttons.append({"text": tx[0] if tx else None,
+                                    "name": (b.get("attrs") or {}).get("_name"),
+                                    "center": self.abs_center(b)})
+            out.append({"texts": self._texts_of_node(w)[:10], "buttons": buttons,
+                        "center": self.abs_center(w)})
+        return out
+
+    def connection_lost(self) -> bool:
+        """True = client mat ket noi -> E-STOP, KHONG bam gi (nut duy nhat la Quit)."""
+        for m in self.message_boxes():
+            blob = " ".join(m["texts"]).lower()
+            if "connection lost" in blob or "connection to server was lost" in blob:
+                return True
+        return False
+
+    # ---------------- SelectedItemWnd buttons (catalog g6_end_*) ----------------
+    def selected_item_buttons(self) -> dict[str, tuple[int, int]]:
+        """{'dock'|'jump'|'warpto'|'alignto'|'approach'|...: center} theo _name
+        'selectedItem<Action>'. Thay context menu cho Dock/Jump/Warp (khong menu cu, khong spam)."""
+        out: dict[str, tuple[int, int]] = {}
+        for n in self._find_by_type("SelectedItemButton", select_many=True) or []:
+            nm = (n.get("attrs") or {}).get("_name")
+            if isinstance(nm, str) and nm.startswith("selectedItem"):
+                out[nm[len("selectedItem"):].lower()] = self.abs_center(n)
+        return out
+
     # ---------------- station window (ground 2026-11-09, TQ Photon UI) ----------------
     def station_window(self) -> dict[str, Any] | None:
         """Cửa sổ station (LobbyWnd). Ground: type 'LobbyWnd' (name='lobbyWnd'),
