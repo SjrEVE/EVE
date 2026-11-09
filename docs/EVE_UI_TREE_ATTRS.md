@@ -13,7 +13,7 @@ Dump: `ui_dump_space*.json` (Jita, undocked, tàu không module) + fixture khoá
 | HP gauge | `Gauge._lastValue` | **`ShipHudSpriteGauge._lastValue`** (float 0..1) |
 | Speed | (không rõ) | **`SpeedGauge` → label `_name=speedLabel`, `_setText="600 m/s"`** |
 | Module buttons | `ShipSlot` → `ModuleButton` | HUD mới: `SlotsContainer` (chứa `OverloadBtn`); tàu CÓ module chưa ground được |
-| Cap pmarks | `pmark` color alpha | `pmark._color` = **`PyColor`** (C-extension) — DLL chưa decode → **cap = unknown (None)** |
+| Cap pmarks | `pmark` color alpha | `pmark._color` = **`PyColor`** → DLL decode thành `{"aPercent","rPercent","gPercent","bPercent"}` (ground từ Sanderling EveOnline64.cs); `aPercent<20` = đoạn cap còn → đếm/tổng |
 | Toạ độ | `_displayX/Y` | **TƯƠNG ĐỐI với cha** → phải cộng dồn từ UIRoot (`Eye.abs_center`) |
 
 **Bug DLL đã fix (2026-11-09):** `read_python_type_float()` trong `dll-source/eve-memory-reader.c`
@@ -21,8 +21,10 @@ là hàm RỖNG → mọi float trong UI tree trả `null` (HP luôn None dù ga
 Đã implement đọc `PyFloatObject.ob_fval` (double @ +0x10) và đổi `FLOAT float_value` → `double`.
 Build lại bằng mingw-w64: xem `dll-source/build_mingw.sh` + `dll-source/PROVENANCE.md`.
 
+**Đã decode 2026-11-09:** PyColor (39 màu khác nhau trên dump thật) → cap đọc được 100% khi đầy.
+**Chưa xác minh động:** cap CẠN MỘT PHẦN (chưa có module tiêu cap) — công thức lấy từ Sanderling.
 **Chưa ground được (fail-closed, KHÔNG đoán):** node báo target đã lock, module button khi có
-module, cap % (PyColor), popup confirm filament. Cần client ở trong abyss / tàu có fit.
+module, popup confirm filament. Cần client ở trong abyss / tàu có fit.
 
 ---
 

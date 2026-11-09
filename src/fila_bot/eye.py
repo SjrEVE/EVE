@@ -163,9 +163,11 @@ class Eye:
     def capacitor_percent(self) -> float | None:
         """Cap % từ pmarks của CapacitorContainer.
 
-        ⚠️ Ground 2026-11-09 (TQ client): pmark._color là PyColor (C-extension) —
-        DLL hiện chưa decode được r/g/b/a → KHÔNG đọc được cap. Trả None (unknown)
-        để guard fail-closed, TUYỆT ĐỐI không trả 0.0 giả.
+        Ground 2026-11-09 (TQ client): pmark._color là PyColor. DLL đã decode
+        (ground từ Sanderling read-memory-64-bit/EveOnline64.cs): PyColor +0x10 trỏ
+        tới dict {_a,_r,_g,_b} → emit JSON {"aPercent","rPercent","gPercent","bPercent"}.
+        Sanderling đếm pmark có aPercent < 20 = đoạn cap CÒN, chia tổng pmark → %.
+        Nếu không decode được màu nào → trả None (unknown), KHÔNG trả 0.0 giả.
         """
         ship = self.ship_ui()
         if ship is None:
@@ -192,8 +194,14 @@ class Eye:
 
     @staticmethod
     def _alpha_from_color(color: Any) -> float | None:
-        """color có thể là dict {r,g,b,a} hoặc list [r,g,b,a] hoặc hex."""
+        """Alpha 0..100. Ưu tiên 'aPercent' (PyColor đã decode bởi DLL).
+
+        Các dạng cũ vẫn chấp nhận để test/legacy: dict {"a":..}, list [r,g,b,a], hex #rrggbbaa.
+        """
         if isinstance(color, dict):
+            if "aPercent" in color:
+                v = color["aPercent"]
+                return float(v) if isinstance(v, (int, float)) else None
             a = color.get("a")
             return float(a) if isinstance(a, (int, float)) else None
         if isinstance(color, (list, tuple)) and len(color) == 4:

@@ -53,6 +53,16 @@ void* dict_entry_cache_copy_fn(void* vvalue, size_t size)
 	{
 		repr->unicode_value = NULL;
 	}
+	if (value->is_pycolor && value->bunch_value != NULL)
+	{
+		const size_t length = strlen(value->bunch_value);
+		repr->bunch_value = malloc(length + 1);
+		memcpy_s(repr->bunch_value, length + 1, value->bunch_value, length + 1);
+	}
+	else
+	{
+		repr->bunch_value = NULL;
+	}
 	repr->int_value = value->int_value;
 	repr->bool_value = value->bool_value;
 	repr->float_value = value->float_value;

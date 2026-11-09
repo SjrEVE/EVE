@@ -20,6 +20,7 @@ vendor/
 # dist build artifacts (zip + embedded python) — tạo lại bằng lệnh trong docs
 dist/*/python/
 dist/*.zip
+dist/*/dll-source/*.dll
 
 # OS
 Thumbs.db

@@ -3,7 +3,7 @@
 `src/eve-memory-reader.dll` — build từ source trong `dll-source/` (fork chengyus
 của jamesalbert/eve-memory-reader, gốc: Sanderling line).
 
-- SHA256: `058616dfad29ddc49cde58b25be710d61cc6c254e365bf8f0f01797bb71fba83`
+- SHA256: `14bc2b561248f8dd5b3d566de9e540fc877f47ef625b833278325f769b6e8968`
 - Build: mingw-w64 (w64devkit GCC 16.2.0), Release x64, ngày 2026-11-09
 - Build lại: `bash dll-source/build_mingw.sh` (hoặc trỏ path tới gcc của w64devkit), hoặc MSVC:
   `msbuild eve-memory-reader.vcxproj /p:Configuration=Release /p:Platform=x64`
@@ -18,9 +18,17 @@ của jamesalbert/eve-memory-reader, gốc: Sanderling line).
 2. Portability để build bằng mingw-w64: `MEMORY_BASIC_INFORMATION` thay `...64`,
    cast `LPCVOID`, include `<stdio.h>`, `return candidates` thay `return;` (hàm trả pointer),
    `wcstombs_s` dùng `size_t`, sửa `PyDictEntry**` trong `python.c`.
-3. Không đổi key nào trong `DICT_KEYS_OF_INTEREST` (vẫn 25 key như bản cũ).
+3. **Decode PyColor** (`read_python_type_pycolor`): ground từ Sanderling
+   `implement/read-memory-64-bit/EveOnline64.cs` (`ReadingFromPythonType_PyColor`):
+   PyColor +0x10 trỏ dict `{_a,_r,_g,_b}` → giá trị PyFloat 0..1 → emit JSON
+   `{"aPercent","rPercent","gPercent","bPercent"}`. `uitree.c` in object JSON,
+   `cache.c` copy `bunch_value`. → `Eye.capacitor_percent()` đọc được cap thật.
+   Verify trên client TQ 2026-11-09: 39 màu khác nhau, 24 pmark `aPercent=0` (cap đầy → 100%).
+4. Không đổi key nào trong `DICT_KEYS_OF_INTEREST` (vẫn 25 key như bản cũ).
 
-## Chưa decode được
+## Chưa verify / chưa làm
 
-- `PyColor` (pmark `_color`) — cap % vẫn unknown (`Eye.capacitor_percent()` trả None).
+- Cap ở trạng thái **CẠN MỘT PHẦN** chưa quan sát được (chưa có module tiêu cap / warp chưa
+  kích hoạt thành công). Công thức `aPercent < 20 = đoạn còn` lấy từ Sanderling (2019) —
+  cần 1 lần cap <100% trên Photon HUD để chốt ngưỡng. Fail-closed vẫn giữ: không màu → None.
 - `Bunch` — chưa parse (không dùng tới).

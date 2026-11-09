@@ -10,7 +10,8 @@ Ground facts (2026-11-09):
 - Selected item = "SelectedItemWnd" (KHÔNG phải "ActiveItem")
 - HP gauge = ShipHudSpriteGauge._lastValue (float — DLL cũ trả null vì read_python_type_float rỗng)
 - Speed = SpeedGauge → label _name=speedLabel, _setText="600 m/s"
-- Cap = pmark._color là PyColor → CHƯA decode được → phải trả None (không đoán 0.0)
+- Cap = pmark._color PyColor → DLL decode thành {"aPercent","rPercent","gPercent","bPercent"};
+  aPercent < 20 = đoạn cap còn → đếm/tổng (ground từ Sanderling read-memory-64-bit/EveOnline64.cs)
 """
 from __future__ import annotations
 
@@ -50,18 +51,45 @@ e = ground_eye()
 hp = e.ship_health()
 ok("ground_hp_read", hp == {"shield": 1.0, "armor": 1.0, "structure": 1.0}, str(hp))
 
-# ---- cap: PyColor chưa decode → None (KHÔNG bịa 0.0) ----
-ok("ground_cap_unknown_none", e.capacitor_percent() is None, str(e.capacitor_percent()))
+# ---- cap: PyColor đã decode → 100% (24/24 pmark aPercent=0, tàu cap đầy) ----
+ok("ground_cap_full", e.capacitor_percent() == 100.0, str(e.capacitor_percent()))
+ok("ground_pycolor_decoded", any(
+    isinstance((n.get("attrs") or {}).get("_color"), dict) and
+    "aPercent" in (n["attrs"]["_color"])
+    for n in e.walk(e.root)), "pmark._color chưa decode")
+
+# Logic cap: 6/24 pmark cạn (alpha 100) → 75% (biến đổi có chủ đích, không phải dump thật)
+import copy
+ep = Eye.__new__(Eye)
+ep.root = copy.deepcopy(e.root); ep._pos = None; ep._pos_root = None
+pm = [n for n in ep.walk(ep.root) if (n.get("attrs") or {}).get("_name") == "pmark"]
+for n in pm[:6]:
+    n["attrs"]["_color"]["aPercent"] = 100
+ok("ground_cap_partial_logic", ep.capacitor_percent() == 75.0, str(ep.capacitor_percent()))
+# Không decode được màu nào → None (fail-closed)
+eu = Eye.__new__(Eye)
+eu.root = copy.deepcopy(e.root); eu._pos = None; eu._pos_root = None
+for n in eu.walk(eu.root):
+    if (n.get("attrs") or {}).get("_name") == "pmark":
+        n["attrs"]["_color"] = None
+ok("ground_cap_unknown_none", eu.capacitor_percent() is None, str(eu.capacitor_percent()))
 
 # ---- speed từ label ----
-ok("ground_speed_label", e.speed_mps() == 600.0, str(e.speed_mps()))
+ok("ground_speed_label", e.speed_mps() == 0.0, str(e.speed_mps()))
+# parse format "600 m/s" (thay label trong bản copy — không phải dữ liệu dump)
+es = Eye.__new__(Eye)
+es.root = copy.deepcopy(e.root); es._pos = None; es._pos_root = None
+for n in es.walk(es.root):
+    if (n.get("attrs") or {}).get("_name") == "speedLabel":
+        n["attrs"]["_setText"] = "600 m/s"
+ok("ground_speed_parse_format", es.speed_mps() == 600.0, str(es.speed_mps()))
 
 # ---- overview: đúng window type + cột theo header ----
 ov = e.overview_entries()
 ok("ground_overview_count", len(ov) == 4, str(len(ov)))
 first = ov[0]
 ok("ground_overview_name", first.get("Name") == "Jita II - Sebiestor Tribe Trade Embassy", str(first.get("Name")))
-ok("ground_overview_distance", first.get("Distance") == "808 km", str(first.get("Distance")))
+ok("ground_overview_distance", first.get("Distance") == "2,042 km", str(first.get("Distance")))
 ok("ground_overview_type_col", first.get("Type") == "Minmatar Trade Post", str(first.get("Type")))
 ok("ground_overview_center_abs",
    700 < first["center"][0] < 1280 and 174 < first["center"][1] < 814, str(first["center"]))

@@ -848,6 +848,62 @@ PyDictEntryList* get_dict_entries_with_string_keys(ULONGLONG address)
 	return dict_entries;
 }
 
+void read_python_type_pycolor(ULONGLONG address, PythonDictValueRepresentation* repr)
+{
+	// Ground từ Sanderling (read-memory-64-bit/EveOnline64.cs, ReadingFromPythonType_PyColor):
+	// PyColor = PyObject (0x18 byte) với pointer tới dict ở +0x10;
+	// dict có key "_a"/"_r"/"_g"/"_b" → PyFloatObject (0..1) → percent = value * 100.
+	ULONGLONG bytes_read = 0;
+	byte* mem = read_bytes(address, 0x18, &bytes_read);
+	if (mem == NULL || bytes_read != 0x18)
+	{
+		free(mem);
+		return;
+	}
+	ULONGLONG dict_address = 0;
+	memcpy(&dict_address, mem + 0x10, 8);
+	free(mem);
+
+	PyDictEntryList* entries = get_dict_entries_with_string_keys(dict_address);
+	if (entries == NULL)
+		return;
+
+	const char* keys[4] = { "_a", "_r", "_g", "_b" };
+	const char* out_keys[4] = { "aPercent", "rPercent", "gPercent", "bPercent" };
+	int values[4] = { 0, 0, 0, 0 };
+	BOOL have[4] = { FALSE, FALSE, FALSE, FALSE };
+	UINT k, i;
+	for (k = 0; k < 4; ++k)
+	{
+		for (i = 0; i < entries->used; ++i)
+		{
+			PyDictEntry* e = entries->data[i];
+			if (e == NULL || e->key_resolved == NULL || strcmp(e->key_resolved, keys[k]) != 0)
+				continue;
+			PythonDictValueRepresentation tmp;
+			memset(&tmp, 0, sizeof(tmp));
+			read_python_type_float(e->value, &tmp);
+			if (tmp.is_float)
+			{
+				values[k] = (int)(tmp.float_value * 100.0);
+				have[k] = TRUE;
+			}
+			break;
+		}
+	}
+	FreePyDictEntryList(entries);
+
+	if (!have[0] || !have[1] || !have[2] || !have[3])
+		return;   // thiếu kênh → fail-closed: không tự dựng màu
+
+	char buf[256];
+	sprintf_s(buf, sizeof(buf),
+		"{\"aPercent\":%d,\"rPercent\":%d,\"gPercent\":%d,\"bPercent\":%d}",
+		values[0], values[1], values[2], values[3]);
+	repr->is_pycolor = TRUE;
+	repr->bunch_value = _strdup(buf);
+}
+
 void read_python_type_bunch(ULONGLONG address, PythonDictValueRepresentation* repr)
 {
 }
@@ -877,6 +933,7 @@ PythonDictValueRepresentation* get_dict_entry_value_representation(ULONGLONG add
 	repr->is_bunch = FALSE;
 	repr->string_value = NULL;
 	repr->unicode_value = NULL;
+	repr->bunch_value = NULL;
 	repr->int_value = 0;
 	repr->bool_value = FALSE;
 	repr->float_value = 0.0;
@@ -891,6 +948,8 @@ PythonDictValueRepresentation* get_dict_entry_value_representation(ULONGLONG add
 		read_python_type_bool(address, repr);
 	else if (strcmp(python_type_name, "float") == 0)
 		read_python_type_float(address, repr);
+	else if (strcmp(python_type_name, "PyColor") == 0)
+		read_python_type_pycolor(address, repr);
 	else if (strcmp(python_type_name, "Bunch") == 0)
 		read_python_type_bunch(address, repr);
 
