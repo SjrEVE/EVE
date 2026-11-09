@@ -154,4 +154,16 @@ ok("g3_mission_entries_jobboard", mea.mission_entries() == ["Rancorous Researche
 ok("g3_state_has_mission", mea.state().mission_entries == ["Rancorous Researcher (1 of 5)"],
    str(mea.state().mission_entries))
 
+# ---------------- G5 GROUND: route() sau Set Destination (dump thật g5_route_set2_173151) ----------------
+# Caption 'Route <fontsize=12>1 Jump' KHÔNG phải tên đích; tên ở alt= Next System in Route
+emr = Eye.__new__(Eye)
+for _k in ("root", "_pos", "_pos_root"):
+    setattr(emr, _k, None)
+emr.root = json.loads((ROOT / "tests" / "fixtures" / "ui_tree_route_set.json").read_text(encoding="utf-8"))
+rr = MissionEye(emr).route()
+ok("g5_route_jumps_next_system", rr == {"destination": "Nourvukaiken", "next_system": "Nourvukaiken",
+                                        "jumps": 1, "markers": 1}, str(rr))
+ok("g5_route_no_destination", MissionEye(ema).route()["destination"] is None,
+   str(MissionEye(ema).route()))
+
 print(f"=> {PASS} test PASS tổng (mission + station + menu)")

@@ -130,7 +130,12 @@ class MissionEye:
 
     def route(self) -> dict[str, Any]:
         """Route đang set: destination text (nếu có) + số marker autopilot."""
-        out: dict[str, Any] = {"destination": None, "markers": 0}
+        # Ground 2026-11-09 (tests/fixtures/ui_tree_route_set.json):
+        #   EveCaptionSmall 'Route <fontsize=12>1 Jump'  -> jumps
+        #   EveLabelMedium  '<a href=showinfo:5//<id> alt= Next System in Route >Nourvukaiken</a>...'
+        #   -> next_system (= dich khi con 1 jump). Caption KHONG phai ten dich.
+        out: dict[str, Any] = {"destination": None, "next_system": None, "jumps": None,
+                               "markers": 0}
         panels = self._find_type("InfoPanelRoute")
         if not panels:
             return out
@@ -141,10 +146,18 @@ class MissionEye:
                     return out
             if n.get("type") == "AutopilotDestinationIcon":
                 out["markers"] += 1
-        for name, txt in self._labels(panels[0]):
-            clean = _strip_tags(txt)
-            if clean and clean.lower() != "route" and clean.lower() != "no destination":
-                out["destination"] = out["destination"] or clean
+        for _name, txt in self._labels(panels[0]):
+            s = str(txt)
+            if _strip_tags(s).strip().lower() == "no destination":
+                return {**out, "markers": 0}
+            mj = re.search(r"^\s*Route\b.*?(\d+)\s+Jumps?", _strip_tags(s), re.I)
+            if mj and out["jumps"] is None:
+                out["jumps"] = int(mj.group(1))
+            mn = re.search(r"alt=\s*Next System in Route\s*>([^<]+)<", s)
+            if mn and out["next_system"] is None:
+                out["next_system"] = mn.group(1).strip()
+        if out["jumps"] == 1 and out["next_system"]:
+            out["destination"] = out["next_system"]
         return out
 
     # ---------------- agent / mission ----------------
