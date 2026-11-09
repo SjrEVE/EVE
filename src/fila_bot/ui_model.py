@@ -33,25 +33,33 @@ def build_supervisor(mode: str, sim: bool = True, dry: bool = True, dll: str | N
     rel = lambda: inp.release_all(dry_run=sim or dry)  # noqa: E731
     max_s = max_hours * 3600 if max_hours else None
     if mode != "abyss":
-        if not sim:
-            # Live distribution/security cần reader agent/inventory/jump/dock thật (G1–G7).
-            # Chưa ground → từ chối thẳng, không chạy giả trên client.
-            raise ModeUnavailable(
-                f"{MODE_LABELS[mode]} LIVE: chưa ground agent/inventory/jump/dock "
-                "trên client thật (G1–G7) — chỉ chạy được SIM")
-        from .sim_worlds import DistSim, SecSim
         if mode == "distribution":
             from .modes.distribution import DistributionMode
-            w = DistSim()
+            if sim:
+                from .sim_worlds import DistSim
+                w = DistSim()
+                refresh = w.world
+                execute_fn = w.apply
+            else:
+                from .eye import Eye
+                from .modes.live_distribution import LiveDistributionRunner
+                runner = LiveDistributionRunner(Eye(dll_path=dll), dry=dry)
+                refresh = runner.refresh
+                execute_fn = runner.apply
             mode_obj: Any = DistributionMode()
-            refresh: Any = w.world
+            return Supervisor(mode_obj, execute=execute_fn, refresh=refresh, release_all=rel,
+                              kill_switch=inp.kill_switch_pressed, max_session_s=max_s)
         else:
+            if not sim:
+                raise ModeUnavailable(
+                    f"{MODE_LABELS[mode]} LIVE: chưa ground combat site/overview/warp "
+                    "trên client thật — chỉ chạy được SIM")
+            from .sim_worlds import SecSim
             from .modes.security import SecurityMode
             w = SecSim()
             mode_obj = SecurityMode(runner=w)
-            refresh = None
-        return Supervisor(mode_obj, execute=w.apply, refresh=refresh, release_all=rel,
-                          kill_switch=inp.kill_switch_pressed, max_session_s=max_s)
+            return Supervisor(mode_obj, execute=w.apply, refresh=None, release_all=rel,
+                              kill_switch=inp.kill_switch_pressed, max_session_s=max_s)
     bus = FileBus(bus_dir or Path(__file__).resolve().parents[2] / "bus")
     if sim:
         ex: Any = DemoSim()

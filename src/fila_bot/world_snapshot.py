@@ -18,7 +18,7 @@ class RouteSnapshot:
     destination: str | None = None
     next_system: str | None = None
     jumps: int | None = None
-    markers: list[tuple[int, int]] = field(default_factory=list)
+    markers: int = 0
 
 
 @dataclass

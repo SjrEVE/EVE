@@ -30,20 +30,24 @@ def pump(m, n=1):
         m.poll()
 
 
-# 1. distribution/security: LIVE chua ground -> FATAL ro rang; SIM chay duoc
-for mode in ("distribution", "security"):
-    try:
-        build_supervisor(mode, sim=False, bus_dir=BUS)
-        raise AssertionError("live phai raise")
-    except ModeUnavailable as e:
-        assert "LIVE" in str(e) and "G1" in str(e), str(e)
-    m = UiModel(factory=factory, threaded=False)
-    m.mode, m.sim = mode, False
-    m.start()
-    v = m.view()
-    assert m.sup is None and v["state"] == "IDLE" and v["banner"].startswith("FATAL")
-    assert v["can_start"] and v["danger"]
-ok("distribution/security LIVE chua ground -> FATAL, nut Start van bat")
+# 1. security: LIVE chua ground -> FATAL ro rang; distribution LIVE da ground (G1-G7)
+try:
+    build_supervisor("security", sim=False, bus_dir=BUS)
+    raise AssertionError("security live phai raise")
+except ModeUnavailable as e:
+    assert "LIVE" in str(e), str(e)
+m = UiModel(factory=factory, threaded=False)
+m.mode, m.sim = "security", False
+m.start()
+v = m.view()
+assert m.sup is None and v["state"] == "IDLE" and v["banner"].startswith("FATAL")
+assert v["can_start"] and v["danger"]
+ok("security LIVE chua ground -> FATAL, nut Start van bat")
+
+# 1a. distribution LIVE: da ground (G1-G7), build_supervisor thanh cong
+sup_dist_live = build_supervisor("distribution", sim=False, dry=True, bus_dir=BUS)
+assert sup_dist_live is not None and sup_dist_live.mode.name == "distribution"
+ok("distribution LIVE da ground -> build_supervisor hop le, khong FATAL")
 
 # 1b. distribution SIM: chay het vong courier (khong phai bang chung client)
 m = UiModel(factory=factory, threaded=False)
