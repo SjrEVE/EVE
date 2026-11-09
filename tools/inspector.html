@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>EVE Online UI Tree Inspector — fila-bot</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; }
+  body { display: flex; height: 100vh; background: #0f141c; color: #d0d7de; overflow: hidden; }
+  #sidebar { width: 420px; border-right: 1px solid #30363d; display: flex; flex-direction: column; background: #161b22; }
+  #header { padding: 12px; border-bottom: 1px solid #30363d; }
+  #header h1 { font-size: 15px; color: #58a6ff; margin-bottom: 8px; }
+  #dropzone { border: 2px dashed #388bfd; border-radius: 6px; padding: 10px; text-align: center; font-size: 12px; cursor: pointer; background: rgba(56, 139, 253, 0.05); }
+  #dropzone:hover { background: rgba(56, 139, 253, 0.15); }
+  #searchBox { width: 100%; margin-top: 8px; padding: 6px 10px; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #fff; font-size: 12px; }
+  #treeContainer { flex: 1; overflow-y: auto; padding: 8px; font-size: 11px; }
+  .tree-node { padding: 2px 4px; border-radius: 3px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tree-node:hover { background: #1f242c; }
+  .tree-node.selected { background: #1f6feb; color: #fff; }
+  .tree-node .t-type { color: #79c0ff; font-weight: bold; }
+  .tree-node .t-name { color: #7ee787; margin-left: 4px; }
+  .tree-node .t-text { color: #e3b341; margin-left: 4px; font-style: italic; }
+  #main { flex: 1; display: flex; flex-direction: column; position: relative; }
+  #canvasContainer { flex: 1; position: relative; overflow: auto; background: #000; }
+  canvas { display: block; background: #090d13; }
+  #tooltip { position: absolute; pointer-events: none; background: rgba(22, 27, 34, 0.95); border: 1px solid #58a6ff; border-radius: 4px; padding: 8px 12px; font-size: 11px; z-index: 100; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.5); max-width: 360px; }
+  #tooltip b { color: #58a6ff; }
+  #detailsBar { height: 160px; border-top: 1px solid #30363d; background: #161b22; padding: 10px 14px; font-size: 11px; overflow-y: auto; line-height: 1.5; }
+  #detailsBar pre { background: #0d1117; padding: 6px; border-radius: 4px; overflow-x: auto; color: #a5d6ff; }
+  .badge { display: inline-block; padding: 1px 5px; border-radius: 10px; font-size: 10px; margin-right: 6px; }
+  .badge-btn { background: #238636; color: #fff; }
+  .badge-win { background: #8957e5; color: #fff; }
+  .badge-txt { background: #d29922; color: #fff; }
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+  <div id="header">
+    <h1>EVE UI Inspector</h1>
+    <div id="dropzone" onclick="document.getElementById('fileInput').click()">
+      Kéo thả file <b>.json</b> vào đây (hoặc click để chọn)
+      <input type="file" id="fileInput" accept=".json" style="display:none">
+    </div>
+    <input type="text" id="searchBox" placeholder="Tìm kiếm type, _name, text (Enter)...">
+  </div>
+  <div id="treeContainer">
+    <div style="color:#8b949e; text-align:center; padding:30px 10px;">Chưa nạp dump file nào.<br>Hãy kéo thả file UI tree JSON từ thư mục <code>dumps/</code> hoặc <code>tests/fixtures/</code>.</div>
+  </div>
+</div>
+
+<div id="main">
+  <div id="canvasContainer">
+    <canvas id="viewCanvas" width="1280" height="1024"></canvas>
+    <div id="tooltip"></div>
+  </div>
+  <div id="detailsBar">
+    <div style="color:#8b949e">Chọn một node trên canvas hoặc bên cây thư mục để xem chi tiết.</div>
+  </div>
+</div>
+
+<script>
+let currentRoot = null;
+let flatNodes = [];
+let hoveredNode = null;
+let selectedNode = null;
+
+const canvas = document.getElementById('viewCanvas');
+const ctx = canvas.getContext('2d');
+const tooltip = document.getElementById('tooltip');
+const detailsBar = document.getElementById('detailsBar');
+const treeContainer = document.getElementById('treeContainer');
+
+function loadJSON(jsonText) {
+  try {
+    currentRoot = JSON.parse(jsonText);
+    flattenTree();
+    renderTreeList();
+    redrawCanvas();
+    detailsBar.innerHTML = `<span style="color:#7ee787">Đã nạp thành công: ${flatNodes.length} nodes UI. Kích thước mô phỏng: ${canvas.width}x${canvas.height}</span>`;
+  } catch(e) {
+    alert("Lỗi parse JSON: " + e.message);
+  }
+}
+
+document.getElementById('fileInput').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = ev => loadJSON(ev.target.result);
+  r.readAsText(f);
+});
+
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => {
+  e.preventDefault();
+  const f = e.dataTransfer.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = ev => loadJSON(ev.target.result);
+  r.readAsText(f);
+});
+
+function getText(attrs) {
+  if (!attrs) return null;
+  let t = attrs._setText || attrs._text;
+  if (!t && attrs._sr && attrs._sr.htmlstr) t = attrs._sr.htmlstr;
+  if (typeof t === 'string') {
+    return t.replace(/<[^>]*>/g, '').trim() || null;
+  }
+  return null;
+}
+
+function flattenTree() {
+  flatNodes = [];
+  function walk(node, px, py, depth) {
+    if (!node || typeof node !== 'object') return;
+    const a = node.attrs || {};
+    const dx = a._displayX !== undefined && a._displayX !== null ? a._displayX : 0;
+    const dy = a._displayY !== undefined && a._displayY !== null ? a._displayY : 0;
+    const dw = a._displayWidth || 0;
+    const dh = a._displayHeight || 0;
+    const ax = px + dx;
+    const ay = py + dy;
+    const txt = getText(a);
+
+    const item = {
+      node: node,
+      type: node.type || node.pythonObjectTypeName || 'Unknown',
+      name: a._name || null,
+      text: txt,
+      x: ax, y: ay, w: dw, h: dh,
+      depth: depth,
+      attrs: a
+    };
+    flatNodes.push(item);
+
+    const children = node.children || [];
+    for (const c of children) {
+      walk(c, ax, ay, depth + 1);
+    }
+  }
+  walk(currentRoot, 0, 0, 0);
+}
+
+function getNodeColor(item) {
+  const t = item.type;
+  const n = item.name || '';
+  if (t === 'Button' || n.endsWith('_Button') || n.endsWith('Btn')) return '#2ea043';
+  if (t.includes('Window') || t === 'LobbyWnd' || t === 'MessageBox') return '#a371f7';
+  if (t === 'Item' || t.includes('InvItem') || t.includes('TreeView')) return '#f0883e';
+  if (t.includes('Text') || t.includes('Label')) return '#e3b341';
+  if (t.includes('Icon') || t.includes('Sprite')) return '#388bfd';
+  if (t.includes('Menu')) return '#f778ba';
+  return '#484f58';
+}
+
+function redrawCanvas() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Vẽ lưới nền
+  ctx.strokeStyle = '#161b22';
+  ctx.lineWidth = 1;
+  for (let x = 0; x < canvas.width; x += 100) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+  }
+  for (let y = 0; y < canvas.height; y += 100) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+  }
+
+  // Vẽ bounding box các node (từ to đến nhỏ)
+  for (const it of flatNodes) {
+    if (it.w <= 0 || it.h <= 0) continue;
+    const col = getNodeColor(it);
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(it.x + 0.5, it.y + 0.5, it.w, it.h);
+
+    if (it.text && it.w > 30 && it.h > 10) {
+      ctx.fillStyle = 'rgba(227, 179, 65, 0.7)';
+      ctx.font = '10px monospace';
+      ctx.fillText(it.text.substring(0, 20), it.x + 4, it.y + 12);
+    }
+  }
+
+  // Highlight hovered node
+  if (hoveredNode && hoveredNode.w > 0 && hoveredNode.h > 0) {
+    ctx.strokeStyle = '#58a6ff';
+    ctx.lineWidth = 2;
+    ctx.fillStyle = 'rgba(88, 166, 255, 0.2)';
+    ctx.fillRect(hoveredNode.x, hoveredNode.y, hoveredNode.w, hoveredNode.h);
+    ctx.strokeRect(hoveredNode.x, hoveredNode.y, hoveredNode.w, hoveredNode.h);
+  }
+
+  // Highlight selected node
+  if (selectedNode && selectedNode.w > 0 && selectedNode.h > 0) {
+    ctx.strokeStyle = '#f85149';
+    ctx.lineWidth = 2;
+    ctx.fillStyle = 'rgba(248, 81, 73, 0.25)';
+    ctx.fillRect(selectedNode.x, selectedNode.y, selectedNode.w, selectedNode.h);
+    ctx.strokeRect(selectedNode.x, selectedNode.y, selectedNode.w, selectedNode.h);
+  }
+}
+
+canvas.addEventListener('mousemove', e => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+
+  // Tìm node nhỏ nhất chứa tọa độ chuột
+  let found = null;
+  let minArea = Infinity;
+  for (const it of flatNodes) {
+    if (it.w > 0 && it.h > 0 && mx >= it.x && mx <= it.x + it.w && my >= it.y && my <= it.y + it.h) {
+      const area = it.w * it.h;
+      if (area < minArea) {
+        minArea = area;
+        found = it;
+      }
+    }
+  }
+
+  hoveredNode = found;
+  if (found) {
+    tooltip.style.display = 'block';
+    tooltip.style.left = (e.clientX - rect.left + 15) + 'px';
+    tooltip.style.top = (e.clientY - rect.top + 15) + 'px';
+    tooltip.innerHTML = `
+      <div><b>Type:</b> <span style="color:#79c0ff">${found.type}</span></div>
+      ${found.name ? `<div><b>Name:</b> <span style="color:#7ee787">${found.name}</span></div>` : ''}
+      <div><b>Rect:</b> (${found.x}, ${found.y}) [${found.w} x ${found.h}]</div>
+      <div><b>Center:</b> (${Math.round(found.x + found.w/2)}, ${Math.round(found.y + found.h/2)})</div>
+      ${found.text ? `<div><b>Text:</b> <span style="color:#e3b341">${found.text}</span></div>` : ''}
+    `;
+  } else {
+    tooltip.style.display = 'none';
+  }
+  redrawCanvas();
+});
+
+canvas.addEventListener('click', () => {
+  if (hoveredNode) {
+    selectedNode = hoveredNode;
+    showDetails(selectedNode);
+    redrawCanvas();
+  }
+});
+
+function showDetails(it) {
+  detailsBar.innerHTML = `
+    <div style="margin-bottom:6px;">
+      <span class="badge ${it.type.includes('Button') ? 'badge-btn' : it.type.includes('Window') ? 'badge-win' : 'badge-txt'}">${it.type}</span>
+      <b style="color:#58a6ff">${it.name || '(không có _name)'}</b> | Center: <b>(${Math.round(it.x + it.w/2)}, ${Math.round(it.y + it.h/2)})</b> | Rect: (${it.x}, ${it.y}, ${it.w}, ${it.h})
+    </div>
+    ${it.text ? `<div style="color:#e3b341; margin-bottom:6px;"><b>Text:</b> "${it.text}"</div>` : ''}
+    <pre>${JSON.stringify(it.attrs, null, 2)}</pre>
+  `;
+}
+
+function renderTreeList(filter = '') {
+  treeContainer.innerHTML = '';
+  const kw = filter.trim().toLowerCase();
+  let count = 0;
+
+  for (const it of flatNodes) {
+    if (kw) {
+      const match = it.type.toLowerCase().includes(kw) ||
+                    (it.name && it.name.toLowerCase().includes(kw)) ||
+                    (it.text && it.text.toLowerCase().includes(kw));
+      if (!match) continue;
+    }
+    count++;
+    if (count > 300) break; // Giới hạn DOM hiển thị
+
+    const div = document.createElement('div');
+    div.className = 'tree-node';
+    div.style.paddingLeft = (it.depth * 10 + 4) + 'px';
+    div.innerHTML = `
+      <span class="t-type">${it.type}</span>
+      ${it.name ? `<span class="t-name">#${it.name}</span>` : ''}
+      ${it.text ? `<span class="t-text">"${it.text.substring(0, 25)}"</span>` : ''}
+    `;
+    div.onclick = () => {
+      selectedNode = it;
+      showDetails(it);
+      redrawCanvas();
+      document.querySelectorAll('.tree-node.selected').forEach(e => e.classList.remove('selected'));
+      div.classList.add('selected');
+    };
+    treeContainer.appendChild(div);
+  }
+}
+
+document.getElementById('searchBox').addEventListener('input', e => {
+  renderTreeList(e.target.value);
+});
+</script>
+</body>
+</html>

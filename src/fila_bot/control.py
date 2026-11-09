@@ -47,6 +47,10 @@ def _run_steps(steps: list[dict[str, Any]], dry: bool) -> list[dict[str, Any]]:
             log.append({"waited": st["s"], "dry": dry})
         elif kind == "type":
             log.append(inp.type_text(st["text"], dry_run=dry))
+        elif kind == "key_click":
+            log.append(inp.send_key_click(st["key"], *st["at"], dry_run=dry))
+        elif kind == "drag":
+            log.append(inp.send_drag(st["from"], st["to"], dry_run=dry))
         elif kind == "hold_ctrl_down":
             if not dry:
                 import ctypes
@@ -103,8 +107,13 @@ def _to_screen_steps(steps: list[dict[str, Any]], win: dict[str, Any] | None,
     from .win import client_to_screen
     out = []
     for st in steps:
-        if st.get("do") in ("click", "right_click") and st.get("at"):
+        do = st.get("do")
+        if do in ("click", "right_click", "key_click") and st.get("at"):
             out.append({**st, "at": client_to_screen(win, st["at"])})
+        elif do == "drag" and st.get("from") and st.get("to"):
+            out.append({**st,
+                        "from": client_to_screen(win, st["from"]),
+                        "to": client_to_screen(win, st["to"])})
         else:
             out.append(st)
     return out
@@ -121,10 +130,14 @@ def _blocked_by_overlay(steps: list[dict[str, Any]], win: dict[str, Any] | None)
         return None
     from .win import is_reachable
     for st in steps:
-        if st.get("do") in ("click", "right_click") and st.get("at"):
+        do = st.get("do")
+        if do in ("click", "right_click", "key_click") and st.get("at"):
             if not is_reachable(win, st["at"]):
                 return (f"điểm {st['at']} bị cửa sổ khác che (không phải EVE) — "
                         "không bấm; đưa cửa sổ EVE lên trước")
+        elif do == "drag" and st.get("from"):
+            if not is_reachable(win, st["from"]):
+                return (f"điểm kéo {st['from']} bị cửa sổ khác che — đưa EVE lên trước")
     return None
 
 
@@ -311,3 +324,15 @@ def act_dismiss() -> ActionSpec:
 def act_click_empty(xy: tuple[int, int]) -> ActionSpec:
     """Click vào vùng trống trong game để đóng menu (thay ESC)."""
     return ActionSpec("dismiss_menu", [{"do": "click", "at": xy}])
+
+
+def act_hotkey_dock_jump(xy: tuple[int, int]) -> ActionSpec:
+    """Native EVE hotkey: giữ D + click chuột trái tại xy (gate/station/route marker).
+    1 hit duy nhất, KHÔNG mở context menu, không sợ delay hay menu cũ."""
+    return ActionSpec("hotkey_dock_jump", [{"do": "key_click", "key": "D", "at": xy}])
+
+
+def act_drag_item(from_xy: tuple[int, int], to_xy: tuple[int, int]) -> ActionSpec:
+    """Kéo thả item từ vị trí này sang vị trí khác (vd từ ItemHangar sang ShipHangar)."""
+    return ActionSpec("drag_item", [{"do": "drag", "from": from_xy, "to": to_xy}])
+

@@ -158,3 +158,55 @@ def type_text(text: str, dry_run: bool = False, humanize: bool = True) -> dict[s
         if humanize:
             time.sleep(humanized_delay(0.05))
     return {"ok": True, "typed": text, "dry": False}
+
+
+def send_key_click(key: str, x: int, y: int, dry_run: bool = False,
+                   humanize: bool = True) -> dict[str, Any]:
+    """Giữ phím (vd 'D' cho Dock/Jump, 'S' cho Warp) + click chuột trái tại (x,y) -> nhả phím.
+    Thao tác native 1-hit của EVE, thay thế hoàn toàn context menu."""
+    if dry_run:
+        return {"ok": True, "key": key, "x": x, "y": y, "dry": True}
+    import ctypes
+
+    user32 = ctypes.windll.user32
+    kv = KEY[key]
+    user32.SetCursorPos(int(x), int(y))
+    if humanize:
+        time.sleep(humanized_delay(0.04))
+    user32.keybd_event(kv, 0, 0, 0)
+    time.sleep(humanized_delay(0.03))
+    MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP = 0x0002, 0x0004
+    user32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
+    time.sleep(humanized_delay(0.03))
+    user32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+    time.sleep(humanized_delay(0.03))
+    user32.keybd_event(kv, 0, 2, 0)
+    return {"ok": True, "key": key, "x": x, "y": y, "dry": False}
+
+
+def send_drag(from_xy: tuple[int, int], to_xy: tuple[int, int], dry_run: bool = False,
+              humanize: bool = True) -> dict[str, Any]:
+    """Kéo thả chuột trái từ from_xy sang to_xy. Dùng cho chuyển hàng giữa các hangar."""
+    fx, fy = from_xy
+    tx, ty = to_xy
+    if dry_run:
+        return {"ok": True, "from": (fx, fy), "to": (tx, ty), "dry": True}
+    import ctypes
+
+    user32 = ctypes.windll.user32
+    MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP = 0x0002, 0x0004
+    user32.SetCursorPos(int(fx), int(fy))
+    if humanize:
+        time.sleep(humanized_delay(0.05))
+    user32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
+    time.sleep(humanized_delay(0.08))
+    # Nội suy 6 bước để game nhận diện thao tác drag
+    steps = 6
+    for i in range(1, steps + 1):
+        cx = int(fx + (tx - fx) * (i / steps))
+        cy = int(fy + (ty - fy) * (i / steps))
+        user32.SetCursorPos(cx, cy)
+        time.sleep(0.015)
+    time.sleep(humanized_delay(0.08))
+    user32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+    return {"ok": True, "from": (fx, fy), "to": (tx, ty), "dry": False}
