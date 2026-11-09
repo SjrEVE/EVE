@@ -120,4 +120,36 @@ assert b["complete"] is None and b["request"] is None, b
 assert accept_rule(off, 400, True)[0] == "accept"
 ok("G2 ground: nut Accept/Decline/Delay theo Button._name; Complete chua co -> None")
 
+# 8. G5 GROUND: link Pickup/Drop-off trong objective_browser (dump that g5_pickup_menu2_173144)
+from fila_bot.agent import location_links  # noqa: E402
+
+FIX3 = Path(__file__).resolve().parent / "fixtures" / "ui_tree_pickup_menu.json"
+real3 = Eye.__new__(Eye)
+for _k in ("root", "_pos", "_pos_root"):
+    setattr(real3, _k, None)
+real3.root = json.loads(FIX3.read_text(encoding="utf-8"))
+ll = location_links(real3)
+assert ll == {"pickup": (939, 317), "dropoff": (935, 371)}, ll
+ok("G5 ground: location_links -> pickup (939,317) / dropoff (935,371) theo Cell row 0/1")
+
+menu = [x for m in real3.context_menus() for x in m["entries"]]
+sd = [x["center"] for x in menu if x["text"] == "Set Destination"]
+assert sd == [(1029, 371)], menu
+ok("G5 ground: menu link location co 'Set Destination' (1029,371)")
+
+assert location_links(FakeEye(node("UIRoot"))) is None
+assert location_links(real2) is None or isinstance(location_links(real2), dict)
+ok("location_links: khong co dialog -> None (fail-closed)")
+
+FIX4 = Path(__file__).resolve().parent / "fixtures" / "ui_tree_route_set.json"
+real4 = Eye.__new__(Eye)
+for _k in ("root", "_pos", "_pos_root"):
+    setattr(real4, _k, None)
+real4.root = json.loads(FIX4.read_text(encoding="utf-8"))
+rp = real4._find_by_type("InfoPanelRoute", select_many=True)
+rtxt = " ".join(str((n.get("attrs") or {}).get("_setText") or "") for n in Eye.walk(rp[0]))
+mk = [n for n in Eye.walk(real4.root) if n.get("type") == "AutopilotDestinationIcon"]
+assert "Nourvukaiken" in rtxt and "1 Jump" in rtxt and len(mk) == 1, (rtxt[:200], len(mk))
+ok("G5 ground: sau Set Destination -> Route '1 Jump' Nourvukaiken + 1 marker")
+
 print("ALL OK test_agent")

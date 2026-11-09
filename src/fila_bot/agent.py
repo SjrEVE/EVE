@@ -202,6 +202,55 @@ def pick_agent(agents: list[dict[str, Any]] | None, division: str,
     return None
 
 
+# ---------------- G5: link Pickup/Drop-off trong objective (GROUND 2026-11-09) ----------------
+# Fixture: tests/fixtures/ui_tree_pickup_menu.json. Link (_name='textlink') KHONG co text;
+# text chi o Edit(objective_browser)._sr.htmlstr. Cau truc that:
+#   Edit objective_browser > ... > VirtualTable > Cell 'tablecell R-C' > ... > Link
+#   R=0 -> Pickup (ten wrap 3 dong = 3 Link), R=1 -> Drop-off (2 Link).
+# Right-click Link dau cua row -> menu 'Set Destination' (verify bang InfoPanelRoute doi ten).
+_CELL = re.compile(r"^tablecell\s+(\d+)-(\d+)$")
+
+
+def location_links(eye: Any) -> dict[str, tuple[int, int]] | None:
+    """{'pickup': xy, 'dropoff': xy} — toa do Link dau tien cua moi dia diem.
+    Fail-closed (None) neu: khong co objective_browser, htmlstr khong co Pickup truoc
+    Drop-off, hoac bang link khong dung 2 hang."""
+    w = eye._find_by_type("AgentDialogueWindow", select_many=True) or []
+    if not w:
+        return None
+    obj = None
+    for n in eye.walk(w[0]):
+        if n.get("type") == "Edit" and (n.get("attrs") or {}).get("_name") == "objective_browser":
+            obj = n
+            break
+    if obj is None:
+        return None
+    sr = (obj.get("attrs") or {}).get("_sr")
+    hs = sr.get("htmlstr", "") if isinstance(sr, dict) else ""
+    ip, idr = hs.find("Pickup Location"), hs.find("Drop-off Location")
+    if ip < 0 or idr < 0 or ip > idr:
+        return None
+    rows: dict[int, list[tuple[int, int]]] = {}
+
+    def visit(n: dict[str, Any], row: int | None) -> None:
+        if n.get("type") == "Cell":
+            m = _CELL.match(str((n.get("attrs") or {}).get("_name") or ""))
+            if m:
+                row = int(m.group(1))
+        if n.get("type") == "Link" and row is not None:
+            rows.setdefault(row, []).append(eye.abs_center(n))
+        for c in n.get("children") or []:
+            visit(c, row)
+
+    visit(obj, None)
+    if sorted(rows) != [0, 1]:
+        return None
+    first = {r: min(v, key=lambda c: (c[1], c[0])) for r, v in rows.items()}
+    if first[0][1] >= first[1][1]:      # pickup phai nam tren drop-off
+        return None
+    return {"pickup": first[0], "dropoff": first[1]}
+
+
 def accept_rule(offer: dict[str, Any] | None, cargo_free_m3: float | None,
                 route_hisec: bool | None) -> tuple[str, str]:
     """('accept'|'decline'|'blocked', ly do). Thieu du kien -> blocked (khong doan)."""
