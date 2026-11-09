@@ -36,6 +36,34 @@ def kill_switch_pressed(get_async: Any = None) -> bool:
     return down(VK_CONTROL_L) and down(VK_SHIFT_L) and down(VK_SPACE_)
 
 
+# M0: E-STOP / PAUSE / crash phải NHẢ mọi phím đang giữ (lock = giữ Ctrl → kẹt Ctrl nếu dừng giữa chừng).
+_RELEASE_KEYS = (("ctrl", 0x11), ("shift", 0x10), ("alt", 0x12))
+_RELEASE_MOUSE = (("lmb", 0x01, 0x0004), ("rmb", 0x02, 0x0010))  # (tên, VK, MOUSEEVENTF_*UP)
+
+
+def release_all(dry_run: bool = False, user32: Any = None) -> dict[str, Any]:
+    """Nhả Ctrl/Shift/Alt + chuột trái/phải NẾU đang bị giữ (GetAsyncKeyState).
+
+    Chỉ gửi key-up cho phím đang down — không bắn sự kiện thừa vào game.
+    `user32` inject được để test không cần Windows.
+    """
+    if dry_run:
+        return {"ok": True, "released": [], "dry": True}
+    if user32 is None:
+        import ctypes
+        user32 = ctypes.windll.user32
+    released: list[str] = []
+    for name, vk in _RELEASE_KEYS:
+        if user32.GetAsyncKeyState(vk) & 0x8000:
+            user32.keybd_event(vk, 0, 2, 0)          # KEYEVENTF_KEYUP
+            released.append(name)
+    for name, vk, up in _RELEASE_MOUSE:
+        if user32.GetAsyncKeyState(vk) & 0x8000:
+            user32.mouse_event(up, 0, 0, 0, 0)
+            released.append(name)
+    return {"ok": True, "released": released, "dry": False}
+
+
 def send_click(x: int, y: int, dry_run: bool = False, humanize: bool = True) -> dict[str, Any]:
     if dry_run:
         return {"ok": True, "x": x, "y": y, "dry": True}

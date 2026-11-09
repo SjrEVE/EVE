@@ -1,0 +1,107 @@
+"""Test UiModel (khong can man hinh) — PYTHONPATH=src python tests/test_ui_model.py"""
+from __future__ import annotations
+
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from fila_bot.ui_model import ModeUnavailable, UiModel, build_supervisor  # noqa: E402
+
+
+def ok(name):
+    print(f"[PASS] {name}")
+
+
+BUS = tempfile.mkdtemp(prefix="fila_ui_")
+
+
+def factory(mode, **kw):
+    sup = build_supervisor(mode, bus_dir=BUS, **kw)
+    sup.kill_switch = lambda: False      # test khong doc ban phim that
+    return sup
+
+
+def pump(m, n=1):
+    for _ in range(n):
+        m.sup.step()
+        m.poll()
+
+
+# 1. mode chua lam -> FATAL ro rang, khong chay gia
+for mode in ("distribution", "security"):
+    try:
+        build_supervisor(mode, bus_dir=BUS)
+        raise AssertionError("phai raise")
+    except ModeUnavailable as e:
+        assert "chưa làm" in str(e)
+    m = UiModel(factory=factory, threaded=False)
+    m.mode = mode
+    m.start()
+    v = m.view()
+    assert m.sup is None and v["state"] == "IDLE" and v["banner"].startswith("FATAL")
+    assert v["can_start"] and v["danger"]
+ok("distribution/security chua lam -> FATAL, nut Start van bat")
+
+# 2. abyss sim: START -> RUNNING, phase chay
+m = UiModel(factory=factory, threaded=False)
+m.start()
+pump(m, 3)
+v = m.view()
+assert v["state"] == "RUNNING" and v["phase"] != "-", v
+assert not v["can_start"] and v["can_stop"] and v["can_estop"]
+ok("abyss sim START -> RUNNING, nut dung trang thai")
+
+# 3. PAUSE -> label RESUME; bam lai -> RUNNING
+m.pause(); pump(m)
+v = m.view()
+assert v["state"] == "PAUSED" and v["pause_label"] == "RESUME" and v["can_start"]
+m.pause(); pump(m)
+assert m.view()["state"] == "RUNNING"
+ok("PAUSE/RESUME toggle")
+
+# 4. vao abyss -> banner canh bao timer; STOP -> chay not run -> IDLE
+for _ in range(200):
+    mode = m.sup.mode
+    if mode.phase == "FILA_SPOOL" and mode.bot.fila_started is not None:
+        mode.bot.fila_started = time.time() - 16
+    pump(m)
+    if m.no_escape:
+        break
+v = m.view()
+assert m.no_escape and "ABYSS" in v["banner"] and v["danger"], v
+ok("trong abyss -> banner do canh bao timer")
+m.stop()
+for _ in range(400):
+    mode = m.sup.mode
+    if mode.phase == "FILA_SPOOL" and mode.bot.fila_started is not None:
+        mode.bot.fila_started = time.time() - 16
+    pump(m)
+    if m.view()["state"] == "IDLE":
+        break
+v = m.view()
+assert v["state"] == "IDLE" and v["phase"] == "DOCKED" and v["runs"] == 1, v
+ok("STOP trong abyss -> chay not run -> IDLE o DOCKED")
+
+# 5. E-STOP
+m = UiModel(factory=factory, threaded=False)
+m.start(); pump(m, 2)
+m.estop(); pump(m)
+v = m.view()
+assert v["state"] == "IDLE" and any("ESTOP" in l for l in v["log"])
+ok("E-STOP -> IDLE + log")
+
+# 6. thread that + close sach
+m = UiModel(factory=factory, threaded=True, tick=0.01)
+m.start()
+t0 = time.time()
+while m.view()["state"] != "RUNNING" and time.time() - t0 < 2:
+    time.sleep(0.02); m.poll()
+assert m.view()["state"] == "RUNNING"
+m.close()
+assert not m.sup._thread.is_alive()
+ok("thread that chay + close sach")
+
+print("ALL OK test_ui_model")
