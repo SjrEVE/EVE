@@ -70,7 +70,8 @@ class AbyssMode(Mode):
 
     @property
     def in_no_escape(self) -> bool:
-        return self.phase in IN_ABYSS
+        # FILA_SPOOL: tàu vẫn ở ngoài (chưa vào abyss) — không báo 'không lối thoát' sớm
+        return self.phase in IN_ABYSS and self.phase != "FILA_SPOOL"
 
     def status(self) -> dict[str, Any]:
         return {"mode": self.name, "phase": self.phase, "runs": self.runs,
