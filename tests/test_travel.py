@@ -68,8 +68,22 @@ ok("dock không route → BLOCKED")
 # 8. menu không có dock/jump → BLOCKED
 t = TravelTo()
 t.tick(w(), 0)
-assert t.tick(w(menu=[("Look At", (1, 1))]), 1)[0]["do"] == "blocked"
-ok("menu sai → BLOCKED, không bấm mù")
+from fila_bot.travel import AFTER_CLICK_S, MENU_RETRY  # noqa: E402
+for _i in range(MENU_RETRY):
+    _a = t.tick(w(menu=[("Look At", (1, 1))]), 1 + _i)
+    assert _a[0]["do"] == "dismiss_menu", _a
+assert t.tick(w(menu=[("Look At", (1, 1))]), 10)[0]["do"] == "blocked"
+ok("menu sai → đóng + thử lại MENU_RETRY lần rồi BLOCKED, không bấm mù")
+
+# 8b. G6 regression: menu cũ còn sau khi bấm Dock → KHÔNG bấm lại (log thật spam 17 lần)
+t = TravelTo()
+t.tick(w(), 0)
+assert t.tick(w(menu=[("Dock", (222, 301))]), 1)[0]["do"] == "menu_entry"
+assert t.tick(w(menu=[("Dock", (222, 301))]), 2)[0]["do"] == "dismiss_menu"
+for _s in (3, 4, 5):
+    assert t.tick(w(menu=[("Dock", (222, 301))]), _s)[0]["do"] == "wait"
+assert t.tick(w(), 1 + AFTER_CLICK_S + 0.1)[0]["do"] == "open_menu"
+ok("sau click Dock: đóng menu cũ 1 lần, chờ, không spam")
 
 # 9. không tiến triển quá lâu → BLOCKED
 t = TravelTo()

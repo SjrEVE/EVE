@@ -20,6 +20,8 @@ NO_ROUTE_DEBOUNCE = 3
 MENU_TIMEOUT_S = 6.0
 PROGRESS_TIMEOUT_S = 90.0      # không jump/dock/warp trong 90s sau khi bấm → blocked
 MENU_PREFS = ("dock", "jump")
+AFTER_CLICK_S = 8.0            # sau khi bấm Dock/Jump: không bấm lại trong 8s (menu cũ còn trong tree)
+MENU_RETRY = 3                 # menu thiếu dock/jump: đóng + thử lại 3 lần rồi mới BLOCKED
 
 
 def read_world(eye: Any) -> dict[str, Any]:
@@ -72,6 +74,10 @@ class TravelTo:
         self.menu_opened_at: float | None = None
         self.last_progress: float | None = None
         self.reason: str | None = None
+        self.clicked_at: float | None = None
+        self.dismissed = False
+        self.last_entry: str | None = None
+        self.bad_menus = 0
 
     def _block(self, why: str) -> list[dict[str, Any]]:
         self.state, self.reason = "BLOCKED", why
@@ -87,6 +93,8 @@ class TravelTo:
         if sysname and self.last_system and sysname != self.last_system:
             self.jumps += 1
             self.last_progress = now
+            # game đã nhận lệnh Jump → hết chờ AFTER_CLICK_S ngay (không đợi timer)
+            self.clicked_at, self.dismissed = None, False
         if sysname:
             self.last_system = sysname
 
@@ -121,12 +129,29 @@ class TravelTo:
             return self._block(f"{int(now - self.last_progress)}s không jump/dock/warp")
 
         menu = w.get("menu") or []
+        # Ground G6 2026-11-09 (dumps/g6_log_174436.jsonl): sau khi bấm entry, UI tree
+        # vẫn còn menu cũ vài giây → bot cũ bấm 'Dock' 17 lần. Sau click: chờ
+        # AFTER_CLICK_S, menu còn → đóng 1 lần, KHÔNG bấm lại.
+        if self.clicked_at is not None and now - self.clicked_at < AFTER_CLICK_S:
+            if menu and not self.dismissed:
+                self.dismissed = True
+                return [{"do": "dismiss_menu", "why": "menu cũ còn sau khi bấm — đóng, không bấm lại"}]
+            return [{"do": "wait", "why": f"chờ game nhận lệnh '{self.last_entry}'"}]
         if menu:
             hit = pick_menu_entry(menu)
             if hit is None:
-                return self._block("menu mở nhưng không có entry dock/jump")
+                # Ground: lúc đang warp vào trạm, menu marker chỉ có Track/Show Info.
+                # Đóng + thử lại vài lần rồi mới block.
+                self.bad_menus += 1
+                if self.bad_menus > MENU_RETRY:
+                    return self._block("menu mở nhưng không có entry dock/jump "
+                                       f"({self.bad_menus} lần)")
+                self.menu_opened_at = None
+                return [{"do": "dismiss_menu", "why": "menu thiếu dock/jump — đóng, thử lại"}]
             self.menu_opened_at = None
             self.last_progress = now
+            self.clicked_at, self.dismissed, self.last_entry = now, False, hit[0]
+            self.bad_menus = 0
             return [{"do": "menu_entry", "text": hit[0], "at": hit[1]}]
 
         if self.menu_opened_at is not None and now - self.menu_opened_at < MENU_TIMEOUT_S:
