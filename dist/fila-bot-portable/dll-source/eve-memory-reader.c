@@ -906,6 +906,70 @@ void read_python_type_pycolor(ULONGLONG address, PythonDictValueRepresentation* 
 
 void read_python_type_bunch(ULONGLONG address, PythonDictValueRepresentation* repr)
 {
+	// Ground từ Sanderling EveOnline64.cs ReadingFromPythonType_Bunch: Bunch là dict
+	// subclass → đọc dict ngay tại address, chỉ giữ key quan tâm ("htmlstr" trong _sr
+	// của SE_TextlineCore = text hiển thị). Emit JSON {"htmlstr":"..."}.
+	// Escape JSON + cắt ≤ 1200 ký tự (buffer in attrs chỉ 5000 byte).
+	PyDictEntryList* entries = get_dict_entries_with_string_keys(address);
+	if (entries == NULL)
+		return;
+	const char* src = NULL;
+	UINT i;
+	for (i = 0; i < entries->used; ++i)
+	{
+		PyDictEntry* e = entries->data[i];
+		if (e == NULL || e->key_resolved == NULL || strcmp(e->key_resolved, "htmlstr") != 0)
+			continue;
+		char* tname = get_python_type_name_from_python_object_address(e->value);
+		if (tname == NULL)
+			break;
+		PythonDictValueRepresentation tmp;
+		memset(&tmp, 0, sizeof(tmp));
+		if (strcmp(tname, "str") == 0)
+		{
+			read_python_type_str(e->value, &tmp);
+			src = tmp.string_value;          // nằm trong cache string, không free
+		}
+		else if (strcmp(tname, "unicode") == 0)
+		{
+			read_python_type_unicode(e->value, &tmp);
+			src = tmp.unicode_value;         // malloc riêng — giữ tới khi copy xong
+		}
+		free(tname);
+		if (src != NULL)
+		{
+			// Bỏ tag HTML + gộp khoảng trắng TRƯỚC khi cắt: <head>/stylesheet ăn hết
+			// 1200 ký tự đầu (ground 2026-11-09: mất cargo m3 + dropoff). Text thuần ≤ 3000.
+			const size_t TXT_MAX = 3000;
+			size_t cap = TXT_MAX * 2 + 32;
+			char* out = malloc(cap);
+			size_t o = 0;
+			const char* head = "{\"htmlstr\":\"";
+			memcpy(out, head, strlen(head));
+			o = strlen(head);
+			size_t n, kept = 0;
+			BOOL in_tag = FALSE, last_space = TRUE;
+			for (n = 0; src[n] != '\0' && kept < TXT_MAX; ++n)
+			{
+				unsigned char c = (unsigned char)src[n];
+				if (c == '<') { in_tag = TRUE; continue; }
+				if (in_tag) { if (c == '>') { in_tag = FALSE; c = ' '; } else continue; }
+				if (c < 0x21 || c > 0x7E) c = ' ';
+				if (c == ' ') { if (last_space) continue; last_space = TRUE; }
+				else last_space = FALSE;
+				if (c == '"' || c == '\\') { out[o++] = '\\'; out[o++] = (char)c; }
+				else { out[o++] = (char)c; }
+				++kept;
+			}
+			out[o++] = '"'; out[o++] = '}'; out[o] = '\0';
+			repr->is_bunch = TRUE;
+			repr->bunch_value = out;
+			if (tmp.is_unicode)
+				free(tmp.unicode_value);
+		}
+		break;
+	}
+	FreePyDictEntryList(entries);
 }
 
 PythonDictValueRepresentation* get_dict_entry_value_representation(ULONGLONG address)
@@ -1023,8 +1087,53 @@ UITreeNode** read_children(UITreeNodeDictEntryList* dict_entries_of_interest, in
 			return NULL;
 		}
 
+		// Ground từ Sanderling EveOnline64.cs (~dòng 975): _childrenObjects có thể là
+		// PyChildrenList (vd ButtonGroup trong AgentDialogueWindow) → đọc thêm 1 tầng:
+		// PyChildrenList +0x10 trỏ dict có key _childrenObjects = list thật.
+		ULONGLONG list_address = children_entry->value;
+		{
+			char* ctn = get_python_type_name_from_python_object_address(list_address);
+			if (ctn != NULL && strcmp(ctn, "PyChildrenList") == 0)
+			{
+				ULONGLONG br2 = 0;
+				byte* pcl = read_bytes(list_address, 0x18, &br2);
+				ULONGLONG inner_dict = 0;
+				if (pcl != NULL && br2 == 0x18)
+					memcpy(&inner_dict, pcl + 0x10, 8);
+				free(pcl);
+				list_address = 0;
+				PyDictEntryList* inner = inner_dict ? read_active_dictionary_entries_from_address(inner_dict) : NULL;
+				if (inner != NULL)
+				{
+					UINT j;
+					for (j = 0; j < inner->used; ++j)
+					{
+						char* kt = get_python_type_name_from_python_object_address(inner->data[j]->key);
+						BOOL is_str = kt != NULL && strcmp(kt, "str") == 0;
+						free(kt);
+						if (!is_str)
+							continue;
+						char* ks = read_python_string_value(inner->data[j]->key, 4000);
+						if (ks != NULL && strcmp(ks, "_childrenObjects") == 0)
+						{
+							list_address = inner->data[j]->value;
+							break;
+						}
+					}
+					FreePyDictEntryList(inner);
+				}
+			}
+			free(ctn);
+		}
+		if (list_address == 0)
+		{
+			free(children_list_memory);
+			FreePyDictEntryList(children_dict_entries);
+			return NULL;
+		}
+
 		bytes_read = 0;
-		byte* python_list_object_memory = read_bytes(children_entry->value, 0x20, &bytes_read);
+		byte* python_list_object_memory = read_bytes(list_address, 0x20, &bytes_read);
 
 		if (python_list_object_memory == NULL)
 		{

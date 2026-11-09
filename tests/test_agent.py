@@ -101,4 +101,23 @@ assert pick_agent(None, "Distribution") is None
 assert agents_panel(FakeEye(node("UIRoot"))) is None
 ok("pick_agent: chi agent kha dung + dung division; khong co panel -> None")
 
+# 7. G2 GROUND: AgentDialogueWindow offer that (DLL 2c19958: Bunch htmlstr + PyChildrenList)
+FIX2 = Path(__file__).resolve().parent / "fixtures" / "ui_tree_agent_offer.json"
+real2 = Eye.__new__(Eye)
+real2.root = json.loads(FIX2.read_text(encoding="utf-8"))
+off = AgentEye(real2).read_offer()
+assert off is not None and off["type"] == "courier", off and off["type"]
+assert off["title"] == "Rancorous Researcher (1 of 5)" and off["chain"] == (1, 5), off["title"]
+assert off["cargo_m3"] == 0.1 and off["cargo_qty"] == 1 and off["cargo_item"] == "Encoded Data Chip", off
+assert off["pickup"] == {"sec": 0.8, "name": "Nourvukaiken VI - Moon 2 - State and Region Bank Depository"}, off["pickup"]
+assert off["dropoff"] == {"sec": 0.9, "name": "Tunttaras IX - Moon 11 - Ytiri Storage"}, off["dropoff"]
+assert 21000 in off["isk"], off["isk"]
+ok("G2 ground: offer that -> courier, chain 1/5, 0.1 m3, pickup/dropoff + sec, 21k ISK")
+
+b = off["buttons"]
+assert b["accept"] == (503, 808) and b["decline"] == (594, 808) and b["delay"] == (685, 808), b
+assert b["complete"] is None and b["request"] is None, b
+assert accept_rule(off, 400, True)[0] == "accept"
+ok("G2 ground: nut Accept/Decline/Delay theo Button._name; Complete chua co -> None")
+
 print("ALL OK test_agent")

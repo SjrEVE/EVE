@@ -137,7 +137,7 @@ char* PrintUITreeNodeDictEntryList(UITreeNodeDictEntryList* del)
 			sprintf_s(response, 5000, "%s%f,", response, del->data[i]->value->float_value);
 		else if (del->data[i]->value->is_bool)
 			sprintf_s(response, 5000, "%s%s,", response, del->data[i]->value->bool_value ? "true" : "false");
-		else if (del->data[i]->value->is_pycolor && del->data[i]->value->bunch_value != NULL)
+		else if ((del->data[i]->value->is_pycolor || del->data[i]->value->is_bunch) && del->data[i]->value->bunch_value != NULL)
 			sprintf_s(response, 5000, "%s%s,", response, del->data[i]->value->bunch_value);
 		else
 			sprintf_s(response, 5000, "%snull,", response);

@@ -53,7 +53,7 @@ void* dict_entry_cache_copy_fn(void* vvalue, size_t size)
 	{
 		repr->unicode_value = NULL;
 	}
-	if (value->is_pycolor && value->bunch_value != NULL)
+	if ((value->is_pycolor || value->is_bunch) && value->bunch_value != NULL)
 	{
 		const size_t length = strlen(value->bunch_value);
 		repr->bunch_value = malloc(length + 1);

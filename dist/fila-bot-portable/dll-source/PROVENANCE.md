@@ -3,7 +3,21 @@
 `src/eve-memory-reader.dll` — build từ source trong `dll-source/` (fork chengyus
 của jamesalbert/eve-memory-reader, gốc: Sanderling line).
 
-- SHA256: `14bc2b561248f8dd5b3d566de9e540fc877f47ef625b833278325f769b6e8968`
+- SHA256: `2c199580fcda860675175d4473d4c6948c6790c44dd67c4822e8f69511124265`
+  (bản trước `14bc2b56...` — giữ backup tại vendor/.../eve-memory-reader.dll.bak-14bc)
+
+## Thay đổi build 2026-11-09 chiều (2c199580)
+
+5. **Decode Bunch** (`read_python_type_bunch` trước RỖNG): ground từ Sanderling
+   `ReadingFromPythonType_Bunch` — Bunch là dict, chỉ giữ `htmlstr` (text của
+   `SE_TextlineCore._sr`). DLL bỏ tag HTML + gộp khoảng trắng rồi cắt ≤3000 ký tự,
+   emit `{"htmlstr":"..."}`. → đọc được nội dung offer agent (title, pickup, dropoff, cargo, reward).
+6. **PyChildrenList**: `_childrenObjects` có thể là `PyChildrenList` → đọc thêm 1 tầng
+   (Sanderling EveOnline64.cs ~975). Trước đây `ButtonGroup` trong AgentDialogueWindow = 0 con;
+   nay thấy `AcceptMission_Button` / `DeclineMission_Button` / `DeferMission_Button`.
+7. `uitree.c` + `cache.c`: in/copy `bunch_value` cho cả `is_bunch` (không chỉ PyColor).
+   Verify client TQ 2026-11-09 (fixture `tests/fixtures/ui_tree_agent_offer.json`).
+   Giới hạn biết trước: ký tự ngoài ASCII thành ' ' (vd `m³` → `m `).
 - Build: mingw-w64 (w64devkit GCC 16.2.0), Release x64, ngày 2026-11-09
 - Build lại: `bash dll-source/build_mingw.sh` (hoặc trỏ path tới gcc của w64devkit), hoặc MSVC:
   `msbuild eve-memory-reader.vcxproj /p:Configuration=Release /p:Platform=x64`

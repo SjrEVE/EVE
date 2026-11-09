@@ -18,6 +18,34 @@ BUTTONS = {
     "close": ("close",),
 }
 _M3 = re.compile(r"([0-9][0-9.,]*)\s*m(?:3|\u00b3)", re.I)
+# G2 GROUND 2026-11-09 (fixture ui_tree_agent_offer.json): nut nam trong ButtonGroup,
+# Button._name = AcceptMission_Button / DeclineMission_Button / DeferMission_Button.
+# Complete/Request CHUA thay tren client -> chi fallback theo text (fail-closed).
+BUTTON_NAMES = {
+    "accept": ("AcceptMission_Button",),
+    "decline": ("DeclineMission_Button",),
+    "delay": ("DeferMission_Button",),
+}
+# DLL thay ky tu ngoai ASCII bang ' ' -> 'm³' thanh 'm ' : "1 x Encoded Data Chip (0.1 m )"
+_CARGO = re.compile(r"Cargo\s+(\d+)\s*x\s+(.+?)\s*\(\s*([0-9][0-9.,]*)\s*m", re.I)
+_TITLE = re.compile(r"^(.+?)\s+Objectives\s+The following", re.I)
+_CHAIN = re.compile(r"\((\d+)\s+of\s+(\d+)\)")
+_ISK = re.compile(r"([0-9][0-9,]*)\s*ISK\b")
+_SEC_NAME = re.compile(r"^(-?\d\.\d)\s+(.+)$")
+
+
+def _loc(blob: str, start: str, ends: tuple[str, ...]) -> dict[str, Any] | None:
+    """'Pickup Location 0.8 Nourvukaiken VI - ... Drop-off Location' -> {sec, name}."""
+    i = blob.find(start)
+    if i < 0:
+        return None
+    rest = blob[i + len(start):]
+    cut = min([rest.find(e) for e in ends if rest.find(e) >= 0] or [len(rest)])
+    seg = rest[:cut].strip()
+    m = _SEC_NAME.match(seg)
+    if not m:
+        return {"sec": None, "name": seg or None}
+    return {"sec": float(m.group(1)), "name": m.group(2).strip()}
 
 
 def _clean(t: str) -> str:
@@ -41,22 +69,36 @@ class AgentEye:
         return w[0] if w else None
 
     def texts(self) -> list[str] | None:
+        """Text trong cua so agent: label (_setText/_text) + noi dung HTML
+        (SE_TextlineCore._sr.htmlstr — DLL 2c19958 da bo tag, ground 2026-11-09)."""
         w = self.window()
         if w is None:
             return None
         out: list[str] = []
         for n in self.eye.walk(w):
             a = n.get("attrs") or {}
-            t = a.get("_setText") or a.get("_text")
-            if isinstance(t, str) and _clean(t) and _clean(t) not in out:
-                out.append(_clean(t))
+            cands = [a.get("_setText"), a.get("_text")]
+            sr = a.get("_sr")
+            if isinstance(sr, dict):
+                cands.append(sr.get("htmlstr"))
+            for t in cands:
+                if not isinstance(t, str):
+                    continue
+                c = re.sub(r"\s+", " ", _clean(t).replace("&nbsp;", " ")).strip()
+                if c and c not in out:
+                    out.append(c)
         return out
 
     def button_xy(self, key: str) -> tuple[int, int] | None:
-        """Toa do nut theo text khop DUNG (khong substring: 'Accept' != 'Accepted')."""
+        """Toa do nut: uu tien Button._name that (G2 ground), roi text khop DUNG
+        (khong substring: 'Accept' != 'Accepted'). Chi trong cua so agent."""
         w = self.window()
         if w is None or key not in BUTTONS:
             return None
+        names = BUTTON_NAMES.get(key, ())
+        for n in self.eye.walk(w):
+            if (n.get("attrs") or {}).get("_name") in names:
+                return self.eye.abs_center(n)
         want = BUTTONS[key]
         for n in self.eye.walk(w):
             a = n.get("attrs") or {}
@@ -69,13 +111,33 @@ class AgentEye:
         tx = self.texts()
         if tx is None:
             return None
-        blob = "\n".join(tx)
+        blob = " ".join(tx)
         low = blob.lower()
-        mtype = ("courier" if "courier" in low or "cargo" in low and "deliver" in low
-                 else "encounter" if "encounter" in low or "objective: destroy" in low
+        mtype = ("courier" if ("transport objective" in low or "courier" in low
+                               or ("cargo" in low and "deliver" in low))
+                 else "encounter" if ("encounter" in low or "objective: destroy" in low
+                                      or "destroy" in low and "objectives" in low)
                  else None)
-        m = _M3.search(blob)
-        return {"type": mtype, "cargo_m3": _vol(m.group(1)) if m else None,
+        cargo_m3 = item = qty = None
+        mc = _CARGO.search(blob)
+        if mc:
+            qty, item, cargo_m3 = int(mc.group(1)), mc.group(2).strip(), _vol(mc.group(3))
+        else:
+            m = _M3.search(blob)
+            cargo_m3 = _vol(m.group(1)) if m else None
+        title = chain = None
+        for t in tx:
+            mt = _TITLE.match(t)
+            if mt:
+                title = mt.group(1).strip()
+                mch = _CHAIN.search(title)
+                chain = (int(mch.group(1)), int(mch.group(2))) if mch else None
+                break
+        return {"type": mtype, "title": title, "chain": chain,
+                "cargo_m3": cargo_m3, "cargo_item": item, "cargo_qty": qty,
+                "pickup": _loc(blob, "Pickup Location", ("Drop-off Location",)),
+                "dropoff": _loc(blob, "Drop-off Location", ("Cargo", "Rewards")),
+                "isk": [int(x.replace(",", "")) for x in _ISK.findall(blob)],
                 "texts": tx, "buttons": {k: self.button_xy(k) for k in BUTTONS}}
 
 
