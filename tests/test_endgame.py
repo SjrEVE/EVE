@@ -120,6 +120,21 @@ dr = [e for e in events(d) if e["type"] == "DRONE"]
 ok("drone_recall_on_damage", any(e.get("action") == "recall" for e in dr), f"drone={dr}")
 ok("drone_state_transition", bot.drones.state == "RECALLING", bot.drones.state)
 
+# ---------------- loop_watchdog không được bắn MAYDAY khi docked/idle ----------------
+bot, ex, bus, d = make_bot()
+ex.phase = "DOCKED"
+for _ in range(8):
+    bot.tick()
+ok("watchdog_silent_docked", "MAYDAY" not in ev_types(d), ",".join(ev_types(d)))
+
+# trong abyss thì vẫn phải bắt spam
+bot, ex, bus, d = make_bot()
+ex.phase = "ROOM1_FIGHT"
+ex.last_action = "lock"
+for _ in range(8):
+    bot.tick()
+ok("watchdog_fires_in_abyss", "MAYDAY" in ev_types(d), ",".join(ev_types(d)))
+
 # ---------------- P2-4: kill-switch poll ----------------
 DOWN = 0x8000
 

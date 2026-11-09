@@ -63,7 +63,8 @@ class TrioRole:
             acts.append({"do": "close_extra_reps", "why": "tank ổn — tiết kiệm cap"})
             self.reps_open = False
         # cap thấp = MAYDAY (cap brick vẫn có hạn)
-        if st.get("cap", 1.0) < 0.2:
+        cap = st.get("cap")
+        if cap is not None and cap < 0.2:
             acts.append({"do": "mayday", "why": "logi cap <20% — hết reps = fleet chết"})
         return acts
 

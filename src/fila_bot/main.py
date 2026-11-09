@@ -46,7 +46,7 @@ class RealExecutor:
         self.phase = "DOCKED"               # macro state do Bot/FC quản (eye chỉ cung cấp tín hiệu)
         self.room = 0
         self.hp = 1.0
-        self.cap = 1.0
+        self.cap: float | None = None      # None = CHƯA đọc được (PyColor chưa decode) — không bịa 1.0
         self.shield = 1.0
         self.armor = 1.0
         self.hull = 1.0
@@ -83,7 +83,8 @@ class RealExecutor:
         # hp tổng = min 3 lớp (bảo thủ — lớp yếu nhất quyết định survival)
         self.hp = min(self.shield, self.armor, self.hull) if hp else self.hp
         cap = e.capacitor_percent()
-        self.cap = (cap / 100.0) if cap is not None else self.cap
+        if cap is not None:                 # giữ None khi chưa đọc được — guard cap sẽ cảnh báo MÙ
+            self.cap = cap / 100.0
         ov = e.overview_entries()
         self.overview_count = len(ov)
         self.maneuver = e.maneuver()
@@ -95,7 +96,8 @@ class RealExecutor:
     def snapshot(self) -> dict[str, Any]:
         return {
             "phase": self.phase, "room": self.room,
-            "hp": round(self.hp, 3), "cap": round(self.cap, 3),
+            "hp": round(self.hp, 3),
+            "cap": None if self.cap is None else round(self.cap, 3),
             "shield": round(self.shield, 3), "armor": round(self.armor, 3),
             "hull": round(self.hull, 3), "dist_gate": self.dist_gate,
             "targets": self.targets, "ammo": round(self.ammo, 3),

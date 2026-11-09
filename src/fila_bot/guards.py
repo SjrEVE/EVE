@@ -57,12 +57,23 @@ class OverviewEmptyGuard(Guard):
 class LoopWatchdog(Guard):
     name = "loop_watchdog"
 
+    # Chỉ soi trong abyss: docked/idle thì phase đứng yên là bình thường (spam MAYDAY vô nghĩa)
+    ABYSS_PHASES = frozenset({
+        "FILA_SPOOL", "ROOM1_FIGHT", "ROOM1_CLEARED", "GATE_TRANSIT",
+        "ROOM2_FIGHT", "ROOM2_CLEARED", "ROOM3_FIGHT", "ROOM3_CLEARED",
+        "EXIT", "LOOT", "SURVIVAL",
+    })
+
     def __init__(self, max_same: int = 5) -> None:
         self.max_same = max_same
         self.last_action: str | None = None
         self.count = 0
 
     def check(self, st: dict[str, Any]) -> dict[str, Any] | None:
+        if st.get("phase") not in self.ABYSS_PHASES:
+            self.last_action = None
+            self.count = 0
+            return None
         act = f"{st.get('phase')}|{st.get('last_action', '')}"
         if act == self.last_action:
             self.count += 1
@@ -128,10 +139,20 @@ class CapStarveGuard(Guard):
 
     def __init__(self, cap_floor: float = 0.25) -> None:
         self.cap_floor = cap_floor
+        self._warned_at = 0.0
 
     def check(self, st: dict[str, Any]) -> dict[str, Any] | None:
-        cap = st.get("cap", 1.0)
+        cap = st.get("cap")
         tank_on = st.get("tank_on", True)
+        if cap is None:
+            # PyColor chưa decode → cap MÙ. Không đoán; cảnh báo 60s/lần để không spam.
+            import time as _t
+            if _t.time() - self._warned_at > 60.0:
+                self._warned_at = _t.time()
+                return {"action": "cap_unknown",
+                        "reason": "cap chưa đọc được (pmark._color = PyColor chưa decode) — "
+                                  "guard cap đang MÙ, không tự power_save"}
+            return None
         if cap < self.cap_floor and tank_on:
             return {"action": "power_save",
                     "reason": f"cap {cap:.0%} < {self.cap_floor:.0%} — neut-heavy room "
