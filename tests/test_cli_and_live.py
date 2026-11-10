@@ -85,9 +85,13 @@ w_no_offer = dict(w)
 w_no_offer["offer"] = None
 acts = mode.tick(w_no_offer)
 assert acts[0]["do"] == "open_agent"
-# Buoc 2: da co offer -> quyet dinh accept
+# Buoc 2: co offer nhung CHUA doc duoc cho trong cargo -> mo Inventory, KHONG accept mu
 acts = mode.tick(w)
-assert acts[0]["do"] == "click"
+assert acts[0]["do"] == "open_inventory", acts
+# Buoc 3: da du du kien (cargo trong + route hisec) -> accept
+w_ok = dict(w, cargo_free=50.0, route_hisec=True)
+acts = mode.tick(w_ok)
+assert acts[0]["do"] == "click", acts
 assert "accept" in acts[0]["why"]
 assert mode.phase == "LOAD"
 ok("End-to-End: DistributionMode + LiveDistributionRunner tick qua AGENT -> OFFER -> LOAD dung")

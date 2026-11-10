@@ -19,9 +19,74 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
 from fila_bot.eye import Eye  # noqa: E402
-from fila_bot.ui_model import build_supervisor  # noqa: E402
+from fila_bot.ui_model import ModeUnavailable, build_supervisor  # noqa: E402
 from fila_bot.win import find_client_window  # noqa: E402
 from fila_bot.world_snapshot import parse_world  # noqa: E402
+
+
+def _build(**kw):
+    """build_supervisor + loi than thien. None = khong chay duoc (da in ly do)."""
+    try:
+        return build_supervisor(**kw)
+    except ModeUnavailable as e:
+        print(f"[KHONG CHAY] {e}")
+        return None
+    except (RuntimeError, FileNotFoundError, OSError) as e:
+        print(f"[FATAL] Khong ket noi duoc EVE client: {e}")
+        print("  -> Mo EVE Online, dang nhap nhan vat roi chay lai.")
+        return None
+
+
+def _watch(sup, *, abyss: bool, max_runs: int | None = None, tick: float = 0.5) -> int:
+    """Vong theo doi co DIEU KIEN DUNG THAT (truoc day lap vo han vi Supervisor
+    khong bao gio o trang thai STOPPED/BLOCKED).
+
+    Tra ve: 0 xong viec, 3 bi chan (fail-closed), 130 nguoi dung Ctrl+C.
+    """
+    sup.start_thread(tick_interval=tick)
+    sup.send("START")
+    print("\nBot da bat dau. Nhan Ctrl+C de dung an toan...")
+    last = ""
+    try:
+        while True:
+            time.sleep(1.0)
+            st = sup.mode.status() if hasattr(sup.mode, "status") else {}
+            phase = getattr(sup.mode, "phase", "?")
+            runs = st.get("runs", 0)
+            if abyss:
+                line = (f"[{time.strftime('%H:%M:%S')}] {sup.state} | phase {phase} | "
+                        f"run {runs} | room {st.get('room', 0)} | hp {st.get('hp')} | "
+                        f"filament {st.get('filaments')}")
+            else:
+                line = (f"[{time.strftime('%H:%M:%S')}] {sup.state} | phase {phase} | "
+                        f"xong {runs} | tu choi {st.get('declined', 0)}")
+            if line != last:                 # chi in khi doi -> log khong bi spam
+                print(line)
+                last = line
+
+            blocked = st.get("blocked")
+            if blocked:
+                print(f"\n[DUNG — fail-closed] {blocked}")
+                sup.shutdown()
+                return 3
+            if not abyss and phase == "IDLE_DONE":
+                print(f"\n[OK] Hoan tat: {runs} nhiem vu, tu choi {st.get('declined', 0)}.")
+                sup.shutdown()
+                return 0
+            if abyss and phase == "DOCKED":
+                settled = sup.ticks > 20 or runs > 0
+                if max_runs is not None and runs >= max_runs and settled:
+                    print(f"\n[OK] Hoan tat {runs} run abyss.")
+                    sup.shutdown()
+                    return 0
+                if settled and not st.get("filaments"):
+                    print(f"\n[OK] Het filament sau {runs} run.")
+                    sup.shutdown()
+                    return 0
+    except KeyboardInterrupt:
+        print("\nNhan lenh dung tu nguoi dung... nha phim + dung sach.")
+        sup.shutdown()
+        return 130
 
 
 def cmd_status(args) -> int:
@@ -54,7 +119,9 @@ def cmd_status(args) -> int:
     if not snap.docked:
         print(f"Tau vu tru                : Toc do: {snap.speed_mps} m/s | Maneuver: {snap.maneuver}")
         if snap.ship_health:
-            print(f"  HP                     : Shield {snap.ship_health.get('shield', 0)*100:.1f}% | Armor {snap.ship_health.get('armor', 0)*100:.1f}% | Hull {snap.ship_health.get('hull', 0)*100:.1f}%")
+            hp = snap.ship_health
+            print(f"  HP                     : Shield {hp.get('shield', 0)*100:.1f}% | "
+                  f"Armor {hp.get('armor', 0)*100:.1f}% | Structure {hp.get('structure', 0)*100:.1f}%")
         print(f"  Target dang chon       : {snap.selected_name} | Nut thao tac: {list(snap.selected_buttons.keys())}")
 
     print(f"Route panel               : Dich: {snap.route.destination} | Jumps: {snap.route.jumps} | Markers: {snap.route.markers}")
@@ -93,6 +160,7 @@ def cmd_distribution(args) -> int:
     print(f"Che do: {'LIVE (Client that)' if is_live else 'SIM (Gia lap test)'}")
     print(f"Thao tac: {'THUC THI PHIM/CHUOT THAT' if not is_dry else 'DRY-RUN (Chi log, an toan)'}")
     print(f"Gioi han: {args.max_missions or 'Vo han'} nhiem vu")
+    print(f"Route sec: {'BO QUA kiem tra (--allow-unknown-sec)' if args.allow_unknown_sec else 'bat buoc hisec'}")
     print("=" * 60)
 
     if is_live and not is_dry:
@@ -101,38 +169,12 @@ def cmd_distribution(args) -> int:
             print("FATAL: Khong tim thay cua so EVE client. Khong the chay che do confirm-input.")
             return 2
 
-    sup = build_supervisor(
-        mode="distribution",
-        sim=not is_live,
-        dry=is_dry,
-        dll=args.dll,
-        max_hours=args.max_hours,
-    )
-
-    if args.max_missions and hasattr(sup.mode, "max_missions"):
-        sup.mode.max_missions = args.max_missions
-
-    sup.start_thread(tick_interval=args.tick)
-    sup.send("START")
-
-    print("\nBot da bat dau. Nhan Ctrl+C de dung an toan...")
-    try:
-        while True:
-            time.sleep(1.0)
-            st = sup.mode.status() if hasattr(sup.mode, "status") else {}
-            phase = getattr(sup.mode, "phase", sup.state)
-            print(f"[{time.strftime('%H:%M:%S')}] State: {sup.state} | Phase: {phase} | Runs: {st.get('runs', 0)} | Declined: {st.get('declined', 0)}")
-            if sup.state in ("STOPPED", "BLOCKED"):
-                print(f"\nBot da dung lai: {sup.state}. Ly do: {st.get('blocked')}")
-                break
-    except KeyboardInterrupt:
-        print("\nNhan lenh dung tu nguoi dung... Dang thu hoi phan cung va dung sach.")
-        sup.send("STOP")
-        time.sleep(1.0)
-        sup.shutdown()
-        print("Da shutdown hoan tat.")
-
-    return 0
+    sup = _build(mode="distribution", sim=not is_live, dry=is_dry, dll=args.dll,
+                 max_hours=args.max_hours, max_missions=args.max_missions,
+                 allow_unknown_sec=bool(args.allow_unknown_sec))
+    if sup is None:
+        return 2
+    return _watch(sup, abyss=False, tick=args.tick)
 
 
 def cmd_abyss(args) -> int:
@@ -144,36 +186,18 @@ def cmd_abyss(args) -> int:
     print("FILA-BOT — ABYSSAL DEADSPACE RUNNER")
     print(f"Che do: {'LIVE (Client that)' if is_live else 'SIM (Gia lap test)'}")
     print(f"Thao tac: {'THUC THI PHIM/CHUOT THAT' if not is_dry else 'DRY-RUN (Chi log, an toan)'}")
-    print(f"Filament: {args.filament}")
+    print(f"Filament: {args.filament}   |   Engine: {args.engine}   |   So run: {args.max_runs or 'Vo han'}")
+    if is_live:
+        print("LUU Y: undock/filament/gate/dock cua Abyss CHUA ground tren client that —")
+        print("        bot chi chay guards va se DUNG voi ly do thay vi bam mu.")
     print("=" * 60)
 
-    sup = build_supervisor(
-        mode="abyss",
-        sim=not is_live,
-        dry=is_dry,
-        dll=args.dll,
-        max_hours=args.max_hours,
-    )
-
-    sup.start_thread(tick_interval=args.tick)
-    sup.send("START")
-
-    print("\nBot Abyss da bat dau. Nhan Ctrl+C de dung an toan...")
-    try:
-        while True:
-            time.sleep(1.0)
-            phase = getattr(sup.mode, "phase", sup.state)
-            print(f"[{time.strftime('%H:%M:%S')}] State: {sup.state} | Phase: {phase}")
-            if sup.state in ("STOPPED", "BLOCKED"):
-                print(f"\nBot Abyss da dung: {sup.state}")
-                break
-    except KeyboardInterrupt:
-        print("\nNhan lenh dung... Dang shutdown an toan.")
-        sup.send("STOP")
-        time.sleep(1.0)
-        sup.shutdown()
-
-    return 0
+    sup = _build(mode="abyss", sim=not is_live, dry=is_dry, dll=args.dll,
+                 max_hours=args.max_hours, filament=args.filament,
+                 max_runs=args.max_runs, engine=args.engine)
+    if sup is None:
+        return 2
+    return _watch(sup, abyss=True, max_runs=args.max_runs, tick=args.tick)
 
 
 def cmd_inspect(args) -> int:
@@ -204,6 +228,8 @@ def main():
     p_dist.add_argument("--max-missions", type=int, default=None, help="So mission toi da")
     p_dist.add_argument("--max-hours", type=float, default=4.0, help="So gio chay toi da")
     p_dist.add_argument("--tick", type=float, default=0.5, help="Tick interval (giay)")
+    p_dist.add_argument("--allow-unknown-sec", action="store_true",
+                        help="Bo kiem tra sec route (mac dinh: khong ro sec -> DUNG, fail-closed)")
     p_dist.set_defaults(func=cmd_distribution)
 
     # abyss
@@ -211,6 +237,9 @@ def main():
     p_aby.add_argument("--live", action="store_true", help="Chay tren client EVE that (mac dinh la sim)")
     p_aby.add_argument("--confirm-input", action="store_true", help="Thuc thi click va phim that (mac dinh chi log)")
     p_aby.add_argument("--filament", default="Tranquil Exotic Filament", help="Ten filament can chay")
+    p_aby.add_argument("--max-runs", type=int, default=None, help="So run abyss toi da")
+    p_aby.add_argument("--engine", choices=("fsm", "bt"), default="fsm",
+                       help="Bo dieu khien: fsm (mac dinh) hoac bt (Behavior Tree)")
     p_aby.add_argument("--max-hours", type=float, default=4.0, help="So gio chay toi da")
     p_aby.add_argument("--tick", type=float, default=0.3, help="Tick interval (giay)")
     p_aby.set_defaults(func=cmd_abyss)

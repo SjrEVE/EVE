@@ -12,13 +12,14 @@ echo ======================================================================
 echo.
 echo   [1] 🚚 Chay Distribution (Courier) — LIVE (Thuc thi bam phim that vao EVE)
 echo   [2] 🧪 Chay Distribution (Courier) — DRY-RUN (An toan, chi log, khong bam)
-echo   [3] 🌌 Chay Abyssal Deadspace — LIVE (Client that)
+echo   [3] 🌌 Chay Abyssal Deadspace — LIVE (CANH BAO: chua ground undock/fila/gate)
 echo   [4] 🎮 Chay Abyssal Deadspace — SIM (Gia lap test logic)
 echo.
 echo   [5] 📊 Kiem tra trang thai EVE Client (WorldSnapshot)
 echo   [6] 🖥️ Mo Cua So Giao Dien Do Hoa (GUI Dashboard)
 echo   [7] 🔍 Mo Cong Cu Soi Giao Dien DOM (Visual UI Inspector)
-echo   [8] 🩺 Kiem Tra Toan Bo Ma Nguon (Health Check 25 Suites / 369 Tests)
+echo   [8] 🩺 Kiem Tra Toan Bo Ma Nguon (Health Check — tat ca suite)
+echo   [9] 🧠 Abyss SIM voi Behavior Tree (engine=bt, so sanh voi FSM)
 echo.
 echo   [0] Thoat
 echo ======================================================================
@@ -32,6 +33,7 @@ if "%opt%"=="5" goto RUN_STATUS
 if "%opt%"=="6" goto RUN_GUI
 if "%opt%"=="7" goto RUN_INSPECTOR
 if "%opt%"=="8" goto RUN_TESTS
+if "%opt%"=="9" goto RUN_ABYSS_BT
 if "%opt%"=="0" exit /b 0
 goto MENU
 
@@ -45,7 +47,10 @@ echo Bam Ctrl+C bat ky luc nao de dung bot an toan.
 echo.
 set /p missions="Nhap so luong nhiem vu muon chay (mac dinh 5): "
 if "%missions%"=="" set missions=5
-python -u -m fila_bot.cli distribution --live --confirm-input --max-missions %missions%
+set /p sec="Bo qua kiem tra sec route? (y/N — mac dinh N = fail-closed): "
+set "SECFLAG="
+if /i "%sec%"=="y" set "SECFLAG=--allow-unknown-sec"
+python -u -m fila_bot.cli distribution --live --confirm-input --max-missions %missions% %SECFLAG%
 echo.
 pause
 goto MENU
@@ -69,9 +74,15 @@ cls
 echo ======================================================================
 echo   CHAY ABYSSAL DEADSPACE — LIVE (CLIENT THAT)
 echo ======================================================================
+echo CANH BAO: undock / dung filament / gate / dock cua Abyss CHUA ground.
+echo Bot se chay guards roi DUNG voi ly do ro rang, KHONG bam mu.
+echo.
 set /p fila="Nhap ten filament (mac dinh: Tranquil Exotic Filament): "
 if "%fila%"=="" set fila=Tranquil Exotic Filament
-python -u -m fila_bot.cli abyss --live --confirm-input --filament "%fila%"
+set /p runs="So run toi da (bo trong = vo han): "
+set "RUNFLAG="
+if not "%runs%"=="" set "RUNFLAG=--max-runs %runs%"
+python -u -m fila_bot.cli abyss --live --confirm-input --filament "%fila%" %RUNFLAG%
 echo.
 pause
 goto MENU
@@ -111,6 +122,16 @@ echo ======================================================================
 echo   DANG CHAY TOAN BO TEST SUITE (IN-PROCESS TEST RUNNER)
 echo ======================================================================
 python tests/run_all.py
+echo.
+pause
+goto MENU
+
+:RUN_ABYSS_BT
+cls
+echo ======================================================================
+echo   ABYSS SIM — BEHAVIOR TREE ENGINE (so sanh voi FSM)
+echo ======================================================================
+python -u -m fila_bot.cli abyss --filament "Tranquil Exotic Filament" --engine bt --max-runs 1
 echo.
 pause
 goto MENU

@@ -2,6 +2,18 @@
 
 Tài liệu nghiên cứu các công nghệ bot game và AI tự hành tiên tiến nhất hiện nay (2025–2026), phân tích tính khả thi và phương án áp dụng cụ thể vào EVE Online (`fila-bot`).
 
+## Trạng thái thực hiện (cập nhật 2026-11-10)
+
+| # | Hạng mục | Trạng thái | Bằng chứng |
+|---|---|---|---|
+| 1 | Behavior Tree thay FSM | **XONG (engine=bt)** | `src/fila_bot/bt.py`, `bt_abyss.py`; `AbyssMode(engine="bt")`; `python -m fila_bot.cli abyss --engine bt --max-runs 1` → `[OK] Hoan tat 1 run` |
+| 2 | APF 3D cho Abyss T5/T6 | Chưa làm | cần đọc vector 3D (chưa ground) |
+| 3 | Hybrid ONNX vision | Chưa làm | — |
+| 4 | Shared memory IPC | Chưa làm | JSON ~50–100ms/frame hiện tại |
+| 5 | Webhook Telegram/Discord | Chưa làm | — |
+
+> Ghi chú: BT chạy **song song** với FSM (`--engine fsm|bt`), không xoá FSM để còn đường lui khi live.
+
 ---
 
 ## 1. Behavior Trees (BT) & Hierarchical Task Networks (HTN) Thay Thế FSM

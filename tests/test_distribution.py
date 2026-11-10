@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from fila_bot.modes.distribution import DistributionMode  # noqa: E402
+from fila_bot.modes.distribution import CARGO_RETRY, DistributionMode  # noqa: E402
 
 
 def ok(n):
@@ -65,8 +65,15 @@ a = m.tick(world(offer={"type": "courier", "cargo_m3": 2.0, "buttons": {}}))
 assert a[0]["do"] == "blocked" and "G2" in a[0]["why"]
 m = mk()
 m.tick(world(offer=COURIER))
-assert m.tick(world(mission_active=True, cargo_loaded=None))[0]["do"] == "blocked"
-ok("loai/nut/cargo khong doc duoc -> BLOCKED, dung han")
+# cargo_loaded=None (Inventory dong) -> mo Inventory roi thu lai, KHONG block ngay tick dau
+a = m.tick(world(mission_active=True, cargo_loaded=None))
+assert a[0]["do"] == "open_inventory", a
+for _ in range(CARGO_RETRY + 2):
+    a = m.tick(world(mission_active=True, cargo_loaded=None))
+    if m.phase == "BLOCKED":
+        break
+assert m.phase == "BLOCKED" and a[0]["do"] == "blocked", (m.phase, a)
+ok("loai/nut/cargo khong doc duoc -> mo Inventory, qua so lan -> BLOCKED")
 
 # 4. popup la -> BLOCKED
 m = mk()

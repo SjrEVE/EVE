@@ -39,17 +39,24 @@ class AbyssMode(Mode):
     def __init__(self, bot: Any, filament: str = "Tranquil Exotic Filament",
                  max_runs: int | None = None,
                  clear_check: Callable[[Any], bool] | None = None,
-                 live_grounded: bool = False) -> None:
+                 live_grounded: bool = False, engine: str = "fsm") -> None:
         super().__init__()
+        if engine not in ("fsm", "bt"):
+            raise ValueError(f"engine la: {engine!r} (chi 'fsm' hoac 'bt')")
         self.bot = bot
         self.ex = bot.ex
         self.filament = filament
         self.max_runs = max_runs
         self.clear_check = clear_check or _no_hostiles
         self.live_grounded = live_grounded
+        self.engine = engine
         self.runs = 0
         self.blocked: str | None = None
         self._seen = 0
+        self._tree: Any = None
+        if engine == "bt":
+            from ..bt_abyss import build_abyss_tree
+            self._tree = build_abyss_tree()
 
     # phase lấy thẳng từ executor (Mode.__init__ gán self.phase → setter bỏ qua)
     @property
@@ -88,12 +95,67 @@ class AbyssMode(Mode):
             self.bot.bus.emit("REJECT", cmd=cmd, reason=str(e))
             return False
 
+    def _bt_world(self) -> dict[str, Any]:
+        """World dict cho cay BT (chi field cay can; thieu -> None/0, khong doan)."""
+        ex = self.ex
+        return {
+            "phase": self.phase,
+            "docked": self.phase == "DOCKED",
+            "filaments": getattr(ex, "filaments", 0) or 0,
+            "hp": getattr(ex, "hp", None),
+            "cap": getattr(ex, "cap", None),
+            "drones_in_space": getattr(ex, "drones_in_space", 0) or 0,
+            "maneuver": getattr(ex, "maneuver", None),
+            "connection_lost": bool(getattr(ex, "connection_lost", False)),
+        }
+
+    def _drive_bt(self) -> None:
+        """Driver bang Behavior Tree: SAFETY > MISSION, cung bo lenh nhu FSM."""
+        from ..bt_abyss import tick_tree
+        ex = self.ex
+        p = self.phase
+        # room sach: doi phase truoc khi cay ra quyet dinh (giong FSM)
+        if p.startswith("ROOM") and p.endswith("_FIGHT") and self.clear_check(ex):
+            ex.phase = f"ROOM{ex.room}_CLEARED"
+            self.bot.bus.emit("ROOM_CLEARED", room=ex.room, gate_open=True)
+        # Chi chan BAT DAU run moi khi dang DOCKED; khong duoc chan lenh DOCK
+        # o WARP_HOME (neu khong tau ket vinh vien o WARP_HOME, khong bao gio ve tram).
+        if p == "DOCKED" and (self.stop_requested
+                              or (self.max_runs is not None and self.runs >= self.max_runs)):
+            return
+        for a in tick_tree(self._tree, self._bt_world()):
+            d = a.get("do")
+            if d == "estop":
+                self.blocked = "connection_lost (BT SAFETY)"
+                self.bot.bus.emit("ESTOP", reason="connection_lost")
+            elif d in ("survival", "power_save", "drones_return", "fight"):
+                # guard/module do reflex lo moi tick; o day chi bao trang thai
+                self.bot.bus.emit("BT", act=d, phase=self.phase)
+            elif d == "undock":
+                self._cmd("UNDOCK")
+            elif d == "fila":
+                self._cmd("FILA", self.filament)
+            elif d == "confirm":
+                self._cmd("CONFIRM")
+            elif d == "gate":
+                self._cmd("GATE")
+            elif d == "dock":
+                self._cmd("DOCK")
+            elif d == "warp_home":
+                ex.phase = "WARP_HOME"
+                self.runs += 1
+                self.bot.abby_started = None
+                self.bot.bus.emit("RUN_DONE", runs=self.runs)
+
     def _drive(self) -> None:
         if not self.is_sim and not self.live_grounded:
             self.blocked = ("abyss live: undock/filament/gate/dock chưa ground (G6/G10) — "
                             "không tiến phase, chỉ chạy guards")
             return
         self.blocked = None
+        if self.engine == "bt":
+            self._drive_bt()
+            return
         p = self.phase
         ex = self.ex
         if p == "DOCKED":
@@ -106,6 +168,10 @@ class AbyssMode(Mode):
                 self._cmd("DOCK")
             else:
                 self._cmd("FILA", self.filament)
+        elif p == "FILA_SPOOL":
+            # THIEU o day truoc 2026-11-10 -> FSM ket vinh vien o FILA_SPOOL,
+            # khong bao gio vao abyss (runs luon = 0). BT thi co nhanh CONFIRM.
+            self._cmd("CONFIRM")
         elif p.endswith("_FIGHT") and p.startswith("ROOM"):
             if self.clear_check(ex):
                 ex.phase = f"ROOM{ex.room}_CLEARED"

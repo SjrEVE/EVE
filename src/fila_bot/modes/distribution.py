@@ -18,6 +18,8 @@ from . import Mode
 from ..agent import accept_rule
 from ..travel import TravelTo
 
+CARGO_RETRY = 8      # so tick toi da thu mo Inventory truoc khi block
+
 
 class DistributionMode(Mode):
     name = "distribution"
@@ -31,6 +33,7 @@ class DistributionMode(Mode):
         self.declined = 0
         self.travel: TravelTo | None = None
         self.blocked: str | None = None
+        self.cargo_retry = 0
         self._docked = True
 
     @property
@@ -83,7 +86,16 @@ class DistributionMode(Mode):
             offer = w.get("offer")
             verdict, why = accept_rule(offer, w.get("cargo_free"), w.get("route_hisec"))
             if verdict == "blocked":
-                return self._block(why)
+                # Chua doc duoc cho trong cargo la loi TAM THOI: mo Inventory roi thu lai,
+                # khong dung han bot (truoc day block ngay o tick dau).
+                if "cargo" in why and self.cargo_retry < CARGO_RETRY:
+                    self.cargo_retry += 1
+                    return [{"do": "open_inventory", "why": why}]
+                hint = (" — mo Inventory de doc cho trong cargo" if "cargo" in why
+                        else " — chay voi --allow-unknown-sec neu chap nhan rui ro" if "sec" in why
+                        else "")
+                return self._block(why + hint)
+            self.cargo_retry = 0
             xy = (offer.get("buttons") or {}).get(verdict)
             if xy is None:
                 return self._block(f"khong thay nut '{verdict}' trong AgentDialogueWindow (G2)")
@@ -95,11 +107,15 @@ class DistributionMode(Mode):
             return [{"do": "click", "at": xy, "why": f"{verdict}: {why}"}]
 
         if p == "LOAD":
-            if w.get("cargo_loaded"):
+            if w.get("cargo_loaded") is True:
                 self.phase = "TO_DROPOFF"
                 return []
             if w.get("cargo_loaded") is None:
-                return self._block("khong doc duoc cargo hold (G4 chua ground)")
+                # Chua mo Inventory -> mo roi doc lai; qua so lan moi block
+                self.cargo_retry += 1
+                if self.cargo_retry <= CARGO_RETRY:
+                    return [{"do": "open_inventory", "why": "chua doc duoc cargo hold"}]
+                return self._block(f"khong doc duoc cargo hold sau {CARGO_RETRY} lan mo Inventory")
             if w.get("station") != w.get("pickup"):
                 return self._go(w.get("pickup"), w, "LOAD")
             return [{"do": "load_cargo", "why": "keo cargo mission tu item hangar vao cargo hold"}]

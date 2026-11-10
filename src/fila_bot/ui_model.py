@@ -22,8 +22,18 @@ class ModeUnavailable(Exception):
 
 
 def build_supervisor(mode: str, sim: bool = True, dry: bool = True, dll: str | None = None,
-                     max_hours: float | None = 4.0, bus_dir: str | None = None,
-                     runs_dir: str | Path | None = None) -> Any:
+                     max_hours: float | None = 4.0, bus_dir: str | Path | None = None,
+                     runs_dir: str | Path | None = None, *,
+                     filament: str | None = None, max_runs: int | None = None,
+                     max_missions: int | None = None, engine: str = "fsm",
+                     allow_unknown_sec: bool = False) -> Any:
+    """Tao Supervisor cho 1 mode. Tham so duoc truyen xuong mode (khong hard-code).
+
+    filament/max_runs  -> AbyssMode (truoc day CLI in ra filament nhung mode dung default)
+    max_missions       -> DistributionMode
+    allow_unknown_sec  -> chap nhan route chua ro sec (mac dinh False = fail-closed)
+    engine             -> "fsm" (mac dinh) hoac "bt" (Behavior Tree)
+    """
     from . import input as inp
     from .bus import FileBus
     from .config import Config
@@ -48,10 +58,11 @@ def build_supervisor(mode: str, sim: bool = True, dry: bool = True, dll: str | N
             else:
                 from .eye import Eye
                 from .modes.live_distribution import LiveDistributionRunner
-                runner = LiveDistributionRunner(Eye(dll_path=dll), dry=dry)
+                runner = LiveDistributionRunner(Eye(dll_path=dll), dry=dry,
+                                                allow_unknown_sec=allow_unknown_sec)
                 refresh = runner.refresh
                 execute_fn = runner.apply
-            mode_obj: Any = DistributionMode()
+            mode_obj: Any = DistributionMode(max_missions=max_missions)
             return Supervisor(mode_obj, execute=execute_fn, refresh=refresh, release_all=rel,
                               kill_switch=inp.kill_switch_pressed, max_session_s=max_s,
                               runlog=runlog)
@@ -78,7 +89,8 @@ def build_supervisor(mode: str, sim: bool = True, dry: bool = True, dll: str | N
         ex = RealExecutor(Eye(dll_path=dll), input_dry=dry, bus=bus)
         execute = lambda acts: ex.process_actions()
         refresh = ex.refresh_from_eye
-    mode_obj = AbyssMode(Bot(bus, Config(), ex))
+    mode_obj = AbyssMode(Bot(bus, Config(), ex), filament=filament or "Tranquil Exotic Filament",
+                         max_runs=max_runs, engine=engine)
     return Supervisor(mode_obj, execute=execute, refresh=refresh,
                       release_all=lambda: inp.release_all(dry_run=sim or dry),
                       kill_switch=inp.kill_switch_pressed,
@@ -98,6 +110,10 @@ class UiModel:
         self.sim = True
         self.dry = True
         self.max_hours: float | None = 4.0
+        self.filament = "Tranquil Exotic Filament"
+        self.max_missions: int | None = None
+        self.max_runs: int | None = None
+        self.engine = "fsm"
         self.sup: Any = None
         self.state = "IDLE"
         self.phase: str | None = None
@@ -122,6 +138,18 @@ class UiModel:
         self.error, self.phase, self.status = None, None, {}
         try:
             self.sup = self.factory(self.mode, sim=self.sim, dry=self.dry,
+                                    max_hours=self.max_hours, filament=self.filament,
+                                    max_missions=self.max_missions, max_runs=self.max_runs,
+                                    engine=self.engine)
+        except TypeError as e:
+            if "unexpected keyword" not in str(e):
+                self.sup = None
+                self.state = "IDLE"
+                self.error = f"FATAL: {e}"
+                self._log(self.error)
+                return
+            # factory cu / test double chi nhan tham so co ban
+            self.sup = self.factory(self.mode, sim=self.sim, dry=self.dry,
                                     max_hours=self.max_hours)
         except Exception as e:  # noqa: BLE001 — UI phải hiện lỗi, không crash
             self.sup = None
@@ -133,7 +161,8 @@ class UiModel:
             self.sup.start_thread(self.tick)
         self.sup.send("START")
         self.started = time.time()
-        self._log(f"START {self.mode} sim={self.sim} dry={self.dry}")
+        self._log(f"START {self.mode} sim={self.sim} dry={self.dry} "
+                  f"filament={self.filament} max_missions={self.max_missions}")
 
     def pause(self) -> None:
         if self.sup is None:
@@ -198,6 +227,7 @@ class UiModel:
             "danger": bool(self.error) or self.no_escape,
             "stats": read_stats(self.runs_dir),
             "runs": st.get("runs", 0),
+            "declined": st.get("declined", 0),
             "room": st.get("room", 0),
             "hp": st.get("hp"),
             "filaments": st.get("filaments"),

@@ -20,13 +20,42 @@ from ..world_snapshot import parse_world
 logger = logging.getLogger("fila_bot.live_distribution")
 
 
+def pick_item_xy(items: list[Any], wanted: str) -> tuple[int, int] | None:
+    """Toa do item co ten khop `wanted` (khong phan biet hoa thuong).
+
+    Tra None khi khong biet ten item hoac khong tim thay -> caller KHONG duoc keo bua.
+    """
+    w = (wanted or "").strip().lower()
+    if not w:
+        return None
+    for it in items or []:
+        if isinstance(it, dict):
+            name, center = str(it.get("name", "")), it.get("center")
+        else:
+            name, center = str(it[0]), it[1]
+        if w in name.lower():
+            return center
+    return None
+
+
+def route_hisec_value(allow_unknown: bool, sec: Any, markers: int) -> bool | None:
+    """True = chac chan hisec, False = chac chan khong, None = khong biet (fail-closed)."""
+    if allow_unknown:
+        return True
+    if isinstance(sec, (int, float)) and sec >= 0.5 and markers == 0:
+        return True
+    return None
+
+
 class LiveDistributionRunner:
     """World provider + Action executor cho DistributionMode tren client EVE that."""
 
-    def __init__(self, eye: Eye, dry: bool = True, default_agent: str | None = None) -> None:
+    def __init__(self, eye: Eye, dry: bool = True, default_agent: str | None = None,
+                 allow_unknown_sec: bool = False) -> None:
         self.eye = eye
         self.dry = dry
         self.default_agent = default_agent
+        self.allow_unknown_sec = allow_unknown_sec
         self.win = None
         self._cached_agent_station: str | None = None
         self._cached_pickup: str | None = None
@@ -72,24 +101,31 @@ class LiveDistributionRunner:
                 if dp.get("name"):
                     self._cached_dropoff = dp["name"]
 
-        # 5. Inventory & Cargo
-        cargo_free = 400.0
-        cargo_loaded = False
+        # 5. Inventory & Cargo — KHONG bia so lieu: dong Inventory = unknown (None)
+        cargo_free: float | None = None
+        cargo_loaded: bool | None = None
         ie = InventoryEye(self.eye)
         if snap.inventory.open:
-            if snap.inventory.capacity and snap.inventory.capacity.get("max") is not None:
-                cap = snap.inventory.capacity
-                cargo_free = (cap["max"] or 400.0) - (cap["used"] or 0.0)
+            cap = snap.inventory.capacity or {}
+            max_v = cap.get("max")
+            if max_v is not None:
+                cargo_free = float(max_v) - float(cap.get("used") or 0.0)
             if self._mission_item_name:
                 cargo_loaded = bool(ie.has_item(self._mission_item_name))
-            else:
-                # Fallback: xem capacity co tren 0.05 m3 khong
-                cap = snap.inventory.capacity or {}
+            elif max_v is not None:
+                # Chua biet ten item mission: chi coi la da load khi cargo co gi do
                 cargo_loaded = (cap.get("used") or 0.0) > 0.05
 
         # 6. Travel snapshot
         from ..travel import read_world as read_travel_world
         travel_dict = read_travel_world(self.eye)
+
+        # 7. Route hisec: chi ket luan khi CHAC CHAN (cung he, sec >= 0.5, khong jump)
+        #    Ngoai ra None -> accept_rule se block (fail-closed), tru khi user bat
+        #    --allow-unknown-sec.
+        sec = snap.security
+        markers = len(travel_dict.get("markers") or [])
+        route_hisec = route_hisec_value(self.allow_unknown_sec, sec, markers)
 
         return {
             "docked": snap.docked,
@@ -101,7 +137,7 @@ class LiveDistributionRunner:
             "mission_active": has_mission,
             "cargo_loaded": cargo_loaded,
             "cargo_free": cargo_free,
-            "route_hisec": True,  # Co the mo rong kiem tra route
+            "route_hisec": route_hisec,
             "popup": None,
             "travel": travel_dict,
         }
@@ -145,23 +181,27 @@ class LiveDistributionRunner:
                 if xy:
                     spec = ctl.act_menu_entry(xy)
 
+            elif d == "open_inventory":
+                btn = self.eye._find_by_type("ButtonInventory", select_many=True) or []
+                if btn:
+                    spec = ctl.act_menu_entry(self.eye.abs_center(btn[0]))
+
             elif d == "load_cargo":
-                # Keo item tu ItemHangar sang ShipHangar
+                # Keo DUNG item mission tu ItemHangar sang ShipHangar.
+                # Truoc day lay items[0] -> keo bua item dau tien (ammo/ore) vao cargo.
                 ie = InventoryEye(self.eye)
                 hangars = {e["name"]: e["center"] for e in (ie.tree_entries() or [])}
                 ship_hangar_xy = hangars.get("ShipHangar")
-                item_hangar_xy = hangars.get("ItemHangar")
-
-                # Tim item trong inventory
-                items = ie.items() or []
-                item_xy = None
-                if items:
-                    item_xy = items[0]["center"]
-
-                if item_xy and ship_hangar_xy:
+                item_xy = pick_item_xy(ie.items() or [], self._mission_item_name or "")
+                if item_xy is None:
+                    # Khong biet ten item mission -> KHONG keo bua (fail-closed)
+                    out.append({"action": d, "ok": False, "dry": self.dry,
+                                "note": f"khong thay item mission {self._mission_item_name!r} "
+                                        "trong ItemHangar"})
+                    continue
+                if ship_hangar_xy:
                     spec = ctl.act_drag_item(item_xy, ship_hangar_xy)
                 elif ie.window() is None:
-                    # Inventory chua mo -> mo inventory
                     btn = self.eye._find_by_type("ButtonInventory", select_many=True)
                     if btn:
                         spec = ctl.act_menu_entry(self.eye.abs_center(btn[0]))
