@@ -200,6 +200,52 @@ def cmd_abyss(args) -> int:
     return _watch(sup, abyss=True, max_runs=args.max_runs, tick=args.tick)
 
 
+def cmd_opportunities(args) -> int:
+    """Doc panel Opportunities (AIR Career Program) — Freelance Jobs/Agent Missions."""
+    print("=== DANG KET NOI EVE CLIENT... ===")
+    win = find_client_window()
+    if win:
+        print(f"[OK] Cua so EVE: '{win['title']}' | Origin: {win['origin']} | Size: {win['size']}")
+    else:
+        print("[CANH BAO] Khong tim thay cua so exefile.exe (EVE Online).")
+
+    try:
+        eye = Eye(dll_path=args.dll)
+        if eye.refresh() is None:
+            print("[CANH BAO] Khong doc duoc UI tree (client khong tra JSON).")
+    except Exception as e:
+        print(f"[LOI] Khong the khoi tao Eye reader: {e}")
+        return 2
+
+    from fila_bot.opportunities import format_summary, parse_jobboard
+
+    data = parse_jobboard(eye.root)
+    if not data.get("opened") and args.open:
+        win = find_client_window()
+        print("[INFO] JobBoardWindow chua mo -> bam nut airCareerProgram (16,112)...")
+        from fila_bot import control as ctl
+        btn = eye._find_by_name("airCareerProgram")
+        if not btn:
+            print("[STOP] Khong thay nut airCareerProgram — ZID khong biet bam gi, khong bia.")
+            return 3
+        xy = eye.abs_center(btn[0])
+        res = ctl.execute(ctl.act_menu_entry(xy), dry=False, win=win)
+        print("[MT] click", xy, "->", res.get("ok"))
+        time.sleep(2.5)
+        if eye.refresh() is None:
+            print("[CANH BAO] refresh that bai sau khi mo panel.")
+        data = parse_jobboard(eye.root)
+
+    print("\n=== OPPORTUNITIES (JobBoardWindow) ===")
+    print(format_summary(data))
+    if args.out:
+        out_path = Path(args.out)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"[MT] da ghi JSON: {out_path}")
+    return 0 if data.get("opened") else 3
+
+
 def cmd_inspect(args) -> int:
     """Mo hoac in link toi Visual DOM Inspector."""
     p = ROOT / "tools" / "inspector.html"
@@ -247,6 +293,13 @@ def main():
     # inspect
     p_ins = sub.add_parser("inspect", help="Mo hoac in thong tin UI inspector")
     p_ins.set_defaults(func=cmd_inspect)
+
+    # opportunities
+    p_opp = sub.add_parser("opportunities", help="Doc panel Opportunities: Freelance Jobs/Agent Missions")
+    p_opp.add_argument("--open", action="store_true",
+                       help="Neu panel dang dong: bam nut airCareerProgram de mo (thao tác that)")
+    p_opp.add_argument("--out", default=None, help="Ghi ket qua ra file JSON")
+    p_opp.set_defaults(func=cmd_opportunities)
 
     args = p.parse_args()
     return args.func(args)

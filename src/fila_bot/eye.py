@@ -48,17 +48,45 @@ class Eye:
         self._pos_root: dict[str, Any] | None = None
 
     def refresh(self) -> dict[str, Any] | None:
-        """Đọc UI tree mới nhất. Trả root dict hoặc None khi không đọc được."""
-        self.dll.read_ui_trees()
-        raw = self.dll.get_ui_json()
+        """Doc UI tree moi nhat. Tra root dict hoac None khi khong doc duoc.
+
+        Trace rac khi client cap nhat dan node (< 2026-11-10 NULL khi xay ra):
+        json.loads co the fail vi raw nat giua 2 lan scan (UI dang thay doi).
+        Thuu lai toi da 3 lan (0.2s) truoc khi bao loi — khong bia du lieu.
+        """
+        import time as _t
+        self.root = None
+        last_err: Exception | None = None
+        parsed = False
+        for _ in range(3):
+            # FREE TRUOC moi lan scan (fix 2026-11-10): neu scan that bai (UI dang
+            # chuyen canh, number_of_children <= 5), DLL KHONG gan lai ui_json —
+            # con tro cu dang free la DANS  → get_ui_json tra rac "char 0".
+            # Free truoc dua ui_json ve NULL → raw None = fail-closed, doc lai.
+            self.dll.free_ui_json()
+            self.dll.read_ui_trees()
+            raw = self.dll.get_ui_json()
+            if not raw:
+                return None
+            try:
+                text = raw.decode("utf-8", errors="strict")
+            except UnicodeDecodeError:
+                # byte UTF-8 dut = client ghi JSON giua chung; thay U+FFFD, khong bo mu (fix 2026-11-10)
+                text = raw.decode("utf-8", errors="replace")
+            try:
+                self.root = json.loads(text)
+                parsed = True
+                break
+            except json.JSONDecodeError as err:
+                last_err = err
+                self.dll.free_ui_json()
+                _t.sleep(0.2)
+        if parsed:
+            self._pos = None
+            self._pos_root = None
+            return self.root
         self.dll.free_ui_json()
-        self._pos = None
-        self._pos_root = None
-        if not raw:
-            self.root = None
-            return None
-        self.root = json.loads(raw.decode("utf-8", errors="ignore"))
-        return self.root
+        raise RuntimeError(f"UI JSON hong sau 3 lan doc: {last_err}")
 
     # ------------- traversal helpers -------------
     @staticmethod
