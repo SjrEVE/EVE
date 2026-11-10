@@ -13,8 +13,8 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from fila_bot.opportunities import format_summary, parse_jobboard  # noqa: E402
 
-FREELANCE = ROOT / "dumps" / "g8_freelance.json"
-CLOSED = ROOT / "dumps" / "g8_opportunities_open.json"
+FREELANCE = ROOT / "tests" / "fixtures" / "ui_tree_freelance_jobs.json"
+CLOSED = ROOT / "tests" / "fixtures" / "ui_tree_opportunities_closed.json"
 
 
 def main() -> int:
