@@ -46,3 +46,6 @@ FilaBot.exe
 # profile thật của máy này (repo public) — chỉ commit security-profile.example.json
 config/security-profile.kompi.json
 
+
+# release builds — tao lai bang tools/build_release.py
+dist/fila-bot-v*/
