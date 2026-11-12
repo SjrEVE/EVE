@@ -1,0 +1,322 @@
+[
+ {
+  "texts_left_to_right": [
+   "18.6 AU",
+   "Piak II - Poksu Mineral Group Refinery",
+   "Caldari Food Processing Plant Station",
+   "111 km",
+   "-",
+   "-"
+  ],
+  "Distance": "18.6 AU",
+  "Name": "Piak II - Poksu Mineral Group Refinery",
+  "Type": "Caldari Food Processing Plant Station",
+  "Size": "111 km",
+  "Velocity (m/s)": "-",
+  "Angular Velocity (deg/s)": "-",
+  "center": [
+   1373,
+   265
+  ]
+ },
+ {
+  "texts_left_to_right": [
+   "26.9 AU",
+   "Piak III - Moon 6 - Poksu Mineral Group Mineral Reserve",
+   "Caldari Mining Station",
+   "96 km",
+   "-",
+   "-"
+  ],
+  "Distance": "26.9 AU",
+  "Name": "Piak III - Moon 6 - Poksu Mineral Group Mineral Reserve",
+  "Type": "Caldari Mining Station",
+  "Size": "96 km",
+  "Velocity (m/s)": "-",
+  "Angular Velocity (deg/s)": "-",
+  "center": [
+   1373,
+   289
+  ]
+ },
+ {
+  "texts_left_to_right": [
+   "18.6 AU",
+   "Piak II - Moon 4 - House of Records Information Center",
+   "Caldari Military Station",
+   "96 km",
+   "-",
+   "-"
+  ],
+  "Distance": "18.6 AU",
+  "Name": "Piak II - Moon 4 - House of Records Information Center",
+  "Type": "Caldari Military Station",
+  "Size": "96 km",
+  "Velocity (m/s)": "-",
+  "Angular Velocity (deg/s)": "-",
+  "center": [
+   1373,
+   313
+  ]
+ },
+ {
+  "texts_left_to_right": [
+   "47.6 AU",
+   "Piak IV - Moon 14 - Kaalakiota Corporation Warehouse",
+   "Caldari Trading Station",
+   "83 km",
+   "-",
+   "-"
+  ],
+  "Distance": "47.6 AU",
+  "Name": "Piak IV - Moon 14 - Kaalakiota Corporation Warehouse",
+  "Type": "Caldari Trading Station",
+  "Size": "83 km",
+  "Velocity (m/s)": "-",
+  "Angular Velocity (deg/s)": "-",
+  "center": [
+   1373,
+   337
+  ]
+ },
+ {
+  "texts_left_to_right": [
+   "47.2 AU",
+   "Piak IV - Moon 22 - Ytiri Storage",
+   "Caldari Trading Station",
+   "83 km",
+   "-",
+   "-"
+  ],
+  "Distance": "47.2 AU",
+  "Name": "Piak IV - Moon 22 - Ytiri Storage",
+  "Type": "Caldari Trading Station",
+  "Size": "83 km",
+  "Velocity (m/s)": "-",
+  "Angular Velocity (deg/s)": "-",
+  "center": [
+   1373,
+   361
+  ]
+ },
+ {
+  "texts_left_to_right": [
+   "18.6 AU",
+   "Piak II - Moon 3 - CBD Corporation Storage",
+   "Caldari Trading Station",
+   "83 km",
+   "-",
+   "-"
+  ],
+  "Distance": "18.6 AU",
+  "Name": "Piak II - Moon 3 - CBD Corporation Storage",
+  "Type": "Caldari Trading Station",
+  "Size": "83 km",
+  "Velocity (m/s)": "-",
+  "Angular Velocity (deg/s)": "-",
+  "center": [
+   1373,
+   433
+  ]
+ },
+ {
+  "texts_left_to_right": [
+   "27.0 AU",
+   "Piak III - Moon 19 - Ytiri Storage",
+   "Caldari Trading Station",
+   "83 km",
+   "-",
+   "-"
+  ],
+  "Distance": "27.0 AU",
+  "Name": "Piak III - Moon 19 - Ytiri Storage",
+  "Type": "Caldari Trading Station",
+  "Size": "83 km",
+  "Velocity (m/s)": "-",
+  "Angular Velocity (deg/s)": "-",
+  "center": [
+   1373,
+   385
+  ]
+ },
+ {
+  "texts_left_to_right": [
+   "26.9 AU",
+   "Piak III - Moon 2 - Rapid Assembly Warehouse",
+   "Caldari Trading Station",
+   "83 km",
+   "-",
+   "-"
+  ],
+  "Distance": "26.9 AU",
+  "Name": "Piak III - Moon 2 - Rapid Assembly Warehouse",
+  "Type": "Caldari Trading Station",
+  "Size": "83 km",
+  "Velocity (m/s)": "-",
+  "Angular Velocity (deg/s)": "-",
+  "center": [
+   1373,
+   409
+  ]
+ },
+ {
+  "texts_left_to_right": [
+   "27.0 AU",
+   "Piak III - Moon 19 - Caldari Navy Assembly Plant",
+   "Caldari Administrative Station",
+   "103 km",
+   "-",
+   "-"
+  ],
+  "Distance": "27.0 AU",
+  "Name": "Piak III - Moon 19 - Caldari Navy Assembly Plant",
+  "Type": "Caldari Administrative Station",
+  "Size": "103 km",
+  "Velocity (m/s)": "-",
+  "Angular Velocity (deg/s)": "-",
+  "center": [
+   1373,
+   457
+  ]
+ },
+ {
+  "texts_left_to_right": [
+   "26.9 AU",
+   "Piak III - Moon 5 - Caldari Constructions Production Plant",
+   "Caldari Administrative Station",
+   "103 km",
+   "-",
+   "-"
+  ],
+  "Distance": "26.9 AU",
+  "Name": "Piak III - Moon 5 - Caldari Constructions Production Plant",
+  "Type": "Caldari Administrative Station",
+  "Size": "103 km",
+  "Velocity (m/s)": "-",
+  "Angular Velocity (deg/s)": "-",
+  "center": [
+   1373,
+   481
+  ]
+ },
+ {
+  "texts_left_to_right": [
+   "22.9 AU",
+   "Caldari Navy Defense Post",
+   "Caldari Navy Defense Post",
+   "2 m",
+   "-",
+   "-"
+  ],
+  "Distance": "22.9 AU",
+  "Name": "Caldari Navy Defense Post",
+  "Type": "Caldari Navy Defense Post",
+  "Size": "2 m",
+  "Velocity (m/s)": "-",
+  "Angular Velocity (deg/s)": "-",
+  "center": [
+   1373,
+   529
+  ]
+ },
+ {
+  "texts_left_to_right": [
+   "22.9 AU",
+   "Onnamon",
+   "Stargate (Caldari Region)",
+   "16 km",
+   "-",
+   "-"
+  ],
+  "Distance": "22.9 AU",
+  "Name": "Onnamon",
+  "Type": "Stargate (Caldari Region)",
+  "Size": "16 km",
+  "Velocity (m/s)": "-",
+  "Angular Velocity (deg/s)": "-",
+  "center": [
+   1373,
+   553
+  ]
+ },
+ {
+  "texts_left_to_right": [
+   "36.4 AU",
+   "Haajinen",
+   "Stargate (Caldari Constellation)",
+   "9,213 m",
+   "-",
+   "-"
+  ],
+  "Distance": "36.4 AU",
+  "Name": "Haajinen",
+  "Type": "Stargate (Caldari Constellation)",
+  "Size": "9,213 m",
+  "Velocity (m/s)": "-",
+  "Angular Velocity (deg/s)": "-",
+  "center": [
+   1373,
+   577
+  ]
+ },
+ {
+  "texts_left_to_right": [
+   "47.6 AU",
+   "Elonaya",
+   "Stargate (Caldari System)",
+   "7,064 m",
+   "-",
+   "-"
+  ],
+  "Distance": "47.6 AU",
+  "Name": "Elonaya",
+  "Type": "Stargate (Caldari System)",
+  "Size": "7,064 m",
+  "Velocity (m/s)": "-",
+  "Angular Velocity (deg/s)": "-",
+  "center": [
+   1373,
+   601
+  ]
+ },
+ {
+  "texts_left_to_right": [
+   "19.0 AU",
+   "Piak - Star",
+   "Sun M0 (Orange radiant)",
+   "1,353,800 km",
+   "-",
+   "-"
+  ],
+  "Distance": "19.0 AU",
+  "Name": "Piak - Star",
+  "Type": "Sun M0 (Orange radiant)",
+  "Size": "1,353,800 km",
+  "Velocity (m/s)": "-",
+  "Angular Velocity (deg/s)": "-",
+  "center": [
+   1373,
+   625
+  ]
+ },
+ {
+  "texts_left_to_right": [
+   "0 m",
+   "Acceleration Gate",
+   "Acceleration Gate",
+   "25 km",
+   "-",
+   "-"
+  ],
+  "Distance": "0 m",
+  "Name": "Acceleration Gate",
+  "Type": "Acceleration Gate",
+  "Size": "25 km",
+  "Velocity (m/s)": "-",
+  "Angular Velocity (deg/s)": "-",
+  "center": [
+   1373,
+   505
+  ]
+ }
+]
