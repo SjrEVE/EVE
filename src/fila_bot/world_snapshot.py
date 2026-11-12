@@ -58,6 +58,7 @@ class WorldSnapshot:
     ship_panel_observed: bool = False
     module_buttons: list[dict[str, Any]] | None = None
     module_activity_known: bool = False
+    capacitor_percent: float | None = None
     drone_panel_observed: bool = False
     drones_in_space: int | None = None
     drones_in_bay: int | None = None
@@ -134,6 +135,7 @@ def parse_world(eye: Eye) -> WorldSnapshot:
         snap.speed_mps = eye.speed_mps()
         snap.maneuver = eye.maneuver()
         snap.ship_health = eye.ship_health()
+        snap.capacitor_percent = eye.capacitor_percent()
         sel = eye.selected_item()
         if sel:
             snap.selected_name = sel.get("name")

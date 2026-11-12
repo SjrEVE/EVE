@@ -160,6 +160,7 @@ def cmd_status(args) -> int:
 
     if snap.location_state == "IN_SPACE":
         print(f"Ship speed               : {snap.speed_mps if snap.speed_mps is not None else 'UNKNOWN'} m/s")
+        print(f"Capacitor                : {f'{snap.capacitor_percent:.1f}%' if snap.capacitor_percent is not None else 'UNKNOWN'}")
         print(f"Maneuver                 : {snap.maneuver or 'UNKNOWN'}")
         if snap.ship_health:
             hp = snap.ship_health
