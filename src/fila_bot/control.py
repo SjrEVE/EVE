@@ -245,17 +245,19 @@ def act_approach(target_xy: tuple[int, int] | None = None) -> ActionSpec:
 
 
 def act_orbit(target_xy: tuple[int, int] | None, distance_km: float) -> ActionSpec:
-    """W + nhập khoảng cách (dialog km) — orbit thật của EVE là W→gõ số→Enter.
-    Chọn target trước nếu có tọa độ."""
-    steps = []
+    """Orbit = GIỮ W + click entry (ground eve-hotkeys-and-widgets.md §1, ref VIIR).
+
+    Sai lầm đã sửa 13-11: 'W → gõ số → Enter' KHÔNG phải cơ chế EVE — W phải GIỮ
+    trong khi click (modifier+click, giống Ctrl+click lock). Khoảng cách orbit là
+    mặc định đã lưu trong EVE settings, không nhập dialog.
+    """
+    steps: list[dict[str, Any]] = []
     if target_xy:
+        steps.append({"do": "hold", "key": "w_down"})
         steps.append({"do": "click", "at": target_xy})
-    steps += [
-        {"do": "combo", "mods": [], "key": "W"},
-        {"do": "wait", "s": 0.5},
-        {"do": "type", "text": str(int(distance_km))},
-        {"do": "combo", "mods": [], "key": "ENTER"},
-    ]
+        steps.append({"do": "hold", "key": "w_up"})
+    else:
+        steps.append({"do": "combo", "mods": [], "key": "W"})
     return ActionSpec("orbit", steps)
 
 

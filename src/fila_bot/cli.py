@@ -275,6 +275,16 @@ def cmd_security(args) -> int:
     if getattr(args, "preflight", False):
         return _security_preflight(args)
 
+    # Cấm 2 bot cùng bấm game (Boss 13-11): kill bot cũ còn sống trước khi chạy.
+    from fila_bot.single_instance import acquire, release
+    acquire("security live" if is_live and not is_dry else "security dry")
+    try:
+        return _security_run(args, is_live, is_dry)
+    finally:
+        release()
+
+
+def _security_run(args, is_live: bool, is_dry: bool) -> int:
     print("=" * 60)
     print(banner() + " — SECURITY PVE MISSION RUNNER (GILA COMBAT DOCTRINE)")
     print(f"Che do: {'LIVE (Client that)' if is_live else 'SIM (Gia lap test)'}")
