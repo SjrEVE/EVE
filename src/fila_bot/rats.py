@@ -75,7 +75,11 @@ FACTION_TOKENS = [
     ("Republic Security", "MinmatarNavy"), ("Imperial", "AmarrNavy"),
     # Pirate faction thứ tự chung (Kappa/Campa/Arch/Gisti prefix Gila hay gặp)
     ("Campa", "Angel"), ("Arch", "Angel"), ("Kappa", "Guristas"),
-    # Mission-only NPC (tên riêng trong objective)
+    # --- Security L2 rats tên tiếng Anh thuần (EVE-Survival Pirate Intrusion,
+    #     Gone Berserk — live 13-11): 'Guristas X'/'Serpentis Y' prefix faction
+    ("Guristas", "Guristas"), ("Serpentis Guard", "Serpentis"),
+    ("Blood Raider", "Blood"), ("Angel Cartel", "Angel"),
+    ("Sansha", "Sansha"), ("Rogue Drone", "RogueDrone"),
     ("EoM", "EoM"),  # Enemies of Man — security L1-L2 rats (EVE-Survival Gone Berserk:
                      # Faction EoM, Imp/Fiend/Incubus/Succubus/Priest frigates, live 13-11)
     ("Escort", "MissionNPC"), ("Commander", "MissionNPC"), ("Officer", "MissionNPC"),

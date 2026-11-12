@@ -144,6 +144,11 @@ class SecurityMode(Mode):
         # KHÔNG xuất trạng thái module, nên "bấm lại nếu chưa active" sẽ toggle
         # giàn đang chạy thành OFF; "chờ cờ đọc được" thì đứng im mãi.
         self._engagement_id: Any = None
+        # NÃO (Boss 13-11): SecurityBrain quyết kill-order/trigger/drone leash
+        # mission-specific. Không LLM — bảng quyết định thuần Python từ
+        # EVE-Survival reports + rats.py + primitives proven live.
+        self._brain: Any = None
+        self._brain_title: str | None = None
         self._engagement_modules_on: bool = False
         # Bay tới mục tiêu ngoài tầm bắn (ground live 11-12: quái 60-65 km).
         self._approach_target: str | None = None
@@ -1053,6 +1058,42 @@ class SecurityMode(Mode):
 
             # Sắp xếp quái theo mức độ đe dọa (priority nhỏ = diệt trước)
             hostiles_sorted = sorted(hostiles, key=lambda r: (r.get("priority", 6), r.get("distance") or 999999))
+            # NÃO (Boss 13-11: "lắp não cho nó"): SecurityBrain quyết target theo
+            # kill-order mission-specific (EWAR/web trước, trigger LAST) thay vì
+            # priority chung. Logic này đọc từ EVE-Survival reports đã ground.
+            mission_tag = (world.get("active_mission_title")
+                           or (world.get("missions") or [None])[0])
+            brain_target_name = None
+            brain_recall = False
+            try:
+                from ..security_brain import SecurityBrain
+                if self._brain is None or self._brain_title != mission_tag:
+                    self._brain = SecurityBrain(mission_title=mission_tag,
+                                                fit={"weapon_slots":
+                                                     getattr(self, "_weapon_slots", None) or [1, 2]})
+                    self._brain_title = mission_tag
+                overview_now = world.get("overview") or []
+                drones_now = world.get("drones") or {}
+                brain_acts = self._brain.decide({
+                    "docked": False,
+                    "overview": overview_now,
+                    "ship_health": hp,
+                    "capacitor_percent": world.get("capacitor_percent"),
+                    "drones": drones_now,
+                })
+                for ba in brain_acts:
+                    if ba.get("do") == "recall_drones":
+                        brain_recall = True
+                first_lock = next((ba for ba in brain_acts if ba.get("do") == "lock"), None)
+                if first_lock:
+                    brain_target_name = first_lock.get("target")
+            except Exception:
+                brain_target_name = None  # brain lỗi → giữ priority chung (fail-safe)
+            if brain_target_name:
+                pick = next((r for r in hostiles_sorted
+                             if r.get("name") == brain_target_name), None)
+                if pick is not None:
+                    hostiles_sorted = [pick] + [r for r in hostiles_sorted if r is not pick]
             target = hostiles_sorted[0]
             t_name = target.get("name")
             t_xy = target.get("center")
@@ -1071,8 +1112,6 @@ class SecurityMode(Mode):
             # One module action per MISSION, not per target: pressing again when
             # the next hostile becomes primary would toggle a running launcher or
             # hardener OFF, and in space the state cannot be read back to notice.
-            mission_tag = (world.get("active_mission_title")
-                           or (world.get("missions") or [None])[0])
             if self._engagement_id != mission_tag:
                 self._engagement_id = mission_tag
                 self._engagement_modules_on = False
