@@ -53,12 +53,12 @@ ok("drones_shift_r", r["input_log"][0]["combo"] == "shift+R", str(r["input_log"]
 r = execute(act_confirm(), dry=True)
 ok("confirm_enter", r["input_log"][0]["combo"] == "ENTER", str(r["input_log"]))
 
-# 2. orbit: click chọn + W + type 25 + Enter
+# 2. orbit: click chọn với W GIỮ (hold w_down → click → hold w_up) — ground
+#    eve-hotkeys-and-widgets §1 + live 13-11: 'W type 25 Enter' KHÔNG phải cơ chế EVE
 r = execute(act_orbit((100, 200), 25), dry=True)
-combos = [s.get("combo") for s in r["input_log"] if "combo" in s]
-typed = [s.get("typed") for s in r["input_log"] if "typed" in s]
+holds = [s.get("hold") for s in r["input_log"] if "hold" in s]
 clicked = [s for s in r["input_log"] if "x" in s]
-ok("orbit_sequence", combos == ["W", "ENTER"] and typed == ["25"] and clicked[0]["x"] == 100,
+ok("orbit_sequence", holds == ["w_down", "w_up"] and clicked and clicked[0]["x"] == 100,
    str(r["input_log"]))
 
 # 3. verify-fail → retry rồi fail sạch

@@ -40,9 +40,15 @@ s = MissionSession("Kompi Yaken", "3016216", "Piak III - Moon 6", path=tmp)
 key_old = s.bind("The Guristas Spies")
 
 # Only one of the two evidence flags is not enough.
-ok("no clear without a fully observed panel and absence",
-   s.reconcile_absent(panel_observed=False, mission_absent=True) is False
-   and s.active_key == key_old, str(s.active_key))
+# Ground 13-11 (Boss): mission_absent=True ĐỦ để clear — tracker None khi docked
+# là bằng chứng mission hết (dock = không có mission đang làm trong space).
+ok("clear with mission_absent only (tracker None, panel not rendered)",
+   s.reconcile_absent(panel_observed=False, mission_absent=True) is True
+   and s.active_key is None, str(s.active_key))
+
+# Re-bind lại key cũ để test phần full-evidence vẫn hoạt động
+s.bind("The Blockade")
+key_old = s.active_key
 
 # Full evidence clears the key without counting a completion.
 ok("stale key cleared when the game lists no mission",

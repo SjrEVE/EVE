@@ -37,14 +37,13 @@ ok("overview_count", snap["overview_count"] == 1, str(snap))
 ok("drones_count", snap["drones_in_space"] == 2, str(snap))
 ok("maneuver_read", snap["maneuver"] == "orbit", str(snap))
 
-# 2. orbit action → keybind thật (dry log): click entry + W + số + Enter
+# 2. orbit action → giữ W + click entry (ground 13-11: W-type-Enter không phải EVE)
 ex.actions.append(("orbit", 12))
 res = ex.process_actions()
 r = res[0]
-combos = [s.get("combo") for s in r["input_log"] if "combo" in s]
-typed = [s.get("typed") for s in r["input_log"] if "typed" in s]
+holds = [s.get("hold") for s in r["input_log"] if "hold" in s]
 clicked = [s for s in r["input_log"] if "x" in s]
-ok("orbit_glue_keys", combos == ["W", "ENTER"] and typed == ["12"] and clicked and clicked[0]["x"] == 125,
+ok("orbit_glue_keys", holds == ["w_down", "w_up"] and bool(clicked) and clicked[0]["x"] == 125,
    str(r["input_log"]))
 ok("orbit_ok_flag", r.get("ok") is True and r.get("action") == "orbit", str(r))
 
