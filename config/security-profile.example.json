@@ -1,0 +1,13 @@
+{
+  "name": "security-v1",
+  "character": null,
+  "agent_name": null,
+  "agent_id": null,
+  "home_station": null,
+  "ship_hull": null,
+  "client_sha256": null,
+  "reader_sha256": null,
+  "level": 1,
+  "accept_policy": "non_anomic",
+  "weapon_slots": [1, 2, 3, 4]
+}
