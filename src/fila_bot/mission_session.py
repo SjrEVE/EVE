@@ -85,10 +85,15 @@ class MissionSession:
 
         A mission the game no longer lists is not active. Drop the key WITHOUT
         counting a completion (completed stays untouched: no fabricated success).
+
+        Ground LIVE 2026-11-13 (Boss): "mission tao trả từ trước" nhưng file vẫn
+        giữ title → tracker None khi DOCKED cũng là bằng chứng mission hết (dock
+        = không có mission đang làm trong space). reconcile cho phép tracker
+        None khi docked: mission_absent=True đủ, panel_observed không bắt buộc.
         """
         if not self.active_key:
             return False
-        if not (panel_observed and mission_absent):
+        if not mission_absent and not (panel_observed and mission_absent):
             return False
         self.active_key = None
         self.title = None
