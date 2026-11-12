@@ -50,6 +50,10 @@ class Supervisor:
         self.last_status: dict[str, Any] = {}
         self._thread: threading.Thread | None = None
         self._quit = threading.Event()
+        self._cancelled = threading.Event()
+        self._epoch = 0
+        self._command_lock = threading.RLock()
+        self._watcher: threading.Thread | None = None
 
     # ---------------- events ----------------
     def _emit(self, etype: str, **fields: Any) -> None:
@@ -70,11 +74,23 @@ class Supervisor:
 
     # ---------------- commands ----------------
     def send(self, cmd: str) -> None:
-        self.cmd_q.put(cmd)
+        with self._command_lock:
+            if str(cmd).upper() in ("ESTOP", "PAUSE"):
+                # These commands must not wait behind a native reader call.
+                while not self.cmd_q.empty():
+                    try:
+                        self.cmd_q.get_nowait()
+                    except queue.Empty:
+                        break
+                self._handle(cmd)
+            else:
+                self.cmd_q.put(cmd)
 
     def _handle(self, cmd: str) -> None:
         c = str(cmd).upper()
         if c == "START":
+            self._cancelled.clear()
+            self._epoch += 1
             if self.state == "IDLE":
                 self.started_at = self.clock()
                 self.ticks = 0
@@ -85,9 +101,13 @@ class Supervisor:
                 self._set("RUNNING", "RESUME")
         elif c == "RESUME":
             if self.state == "PAUSED":
+                self._cancelled.clear()
+                self._epoch += 1
                 self._set("RUNNING", "RESUME")
         elif c == "PAUSE":
             if self.state == "RUNNING":
+                self._cancelled.set()
+                self._epoch += 1
                 self.release_all()
                 self._set("PAUSED", "PAUSE")
                 if getattr(self.mode, "in_no_escape", False):
@@ -104,18 +124,21 @@ class Supervisor:
             self._emit("REJECT", cmd=cmd, reason="lệnh không hợp lệ")
 
     def _estop(self, reason: str) -> None:
+        self._cancelled.set()
+        self._epoch += 1
         self.release_all()
         self._set("IDLE", reason)
         self._emit("ESTOP", reason=reason)
 
     # ---------------- one step ----------------
     def step(self) -> None:
-        while True:
-            try:
-                cmd = self.cmd_q.get_nowait()
-            except queue.Empty:
-                break
-            self._handle(cmd)
+        with self._command_lock:
+            while True:
+                try:
+                    cmd = self.cmd_q.get_nowait()
+                except queue.Empty:
+                    break
+                self._handle(cmd)
 
         if self.state != "IDLE":
             try:
@@ -140,14 +163,23 @@ class Supervisor:
             return
 
         try:
+            epoch = self._epoch
             world = self.refresh() if self.refresh else None
+            if self._cancelled.is_set() or self._quit.is_set() or epoch != self._epoch:
+                return
             acts = self.mode.tick(world) or []
+            if self._cancelled.is_set() or self._quit.is_set() or epoch != self._epoch:
+                return
             results = self.execute(acts) if acts else []
+            if results:
+                hook = getattr(self.mode, "on_action_results", None)
+                if callable(hook):
+                    hook(results)
             self.ticks += 1
             status = self.mode.status() if hasattr(self.mode, "status") else {}
             self.last_status = status
             self._emit("TICK", ticks=self.ticks, phase=getattr(self.mode, "phase", None),
-                       actions=len(acts), results=results, status=status)
+                       actions=len(acts), acts=acts, results=results, status=status)
         except Exception as e:  # noqa: BLE001
             self.release_all()
             self.last_error = repr(e)
@@ -166,10 +198,22 @@ class Supervisor:
             self.step()
             self._quit.wait(tick_interval)
 
+    def _watch_safety(self) -> None:
+        while not self._quit.wait(0.025):
+            if self.state != "IDLE":
+                try:
+                    pressed = bool(self.kill_switch())
+                except Exception:
+                    pressed = False
+                if pressed:
+                    self.send("ESTOP")
+
     def start_thread(self, tick_interval: float = 0.3) -> threading.Thread:
         if self._thread and self._thread.is_alive():
             return self._thread
         self._quit.clear()
+        self._watcher = threading.Thread(target=self._watch_safety, name="fila-safety", daemon=True)
+        self._watcher.start()
         self._thread = threading.Thread(target=self.run, args=(tick_interval,),
                                         name="fila-supervisor", daemon=True)
         self._thread.start()
@@ -181,3 +225,5 @@ class Supervisor:
         self._quit.set()
         if self._thread:
             self._thread.join(timeout)
+        if self._watcher and self._watcher is not threading.current_thread():
+            self._watcher.join(min(timeout, 0.5))

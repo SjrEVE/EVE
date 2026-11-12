@@ -1,5 +1,7 @@
 # MISSION RUNNING — cơ chế game (nghiên cứu 2026-11-09)
 
+> **AUDIT WARNING — 2026-11-11:** This is a historical/community-derived draft (EVE UniWiki/BotLab), not a verified runtime mission database. Wave counts, trigger rules, damage tables, the 18-second clear timer, and the old Empire-decline policy must not authorize live combat. The current official SDE contradicts the old title heuristic: **Cargo Delivery is a `killMission` template with an item objective, not a pure courier template.** Use [`MISSION_RESEARCH_DEEP_2026-11-11.md`](MISSION_RESEARCH_DEEP_2026-11-11.md) for the audited facts, code gaps, and safe build plan.
+
 Nguồn: EVE University Wiki (Missions, Security_missions, Agent, NPC_standings, Deadspace,
 Acceleration_gate, Npc_damage, Career_Agents, The_Agency, Agent_Finder, + 4 mission report L1),
 Sanderling `read-memory-64-bit/EveOnline64.cs` + `ParseUserInterface.elm`, BotLab forum.

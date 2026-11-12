@@ -187,34 +187,68 @@ class LiveDistributionRunner:
                     spec = ctl.act_menu_entry(self.eye.abs_center(btn[0]))
 
             elif d == "load_cargo":
-                # Keo DUNG item mission tu ItemHangar sang ShipHangar.
-                # Truoc day lay items[0] -> keo bua item dau tien (ammo/ore) vao cargo.
+                # Keo DUNG item mission tu ItemHangar sang ShipHangar (kho tau).
+                # Buoc 0: chon ItemHangar trong tree truoc (items() doc container
+                # DANG chon — neu dang la ShipCargo thi doc sai noi dung).
                 ie = InventoryEye(self.eye)
-                hangars = {e["name"]: e["center"] for e in (ie.tree_entries() or [])}
-                ship_hangar_xy = hangars.get("ShipHangar")
-                item_xy = pick_item_xy(ie.items() or [], self._mission_item_name or "")
-                if item_xy is None:
-                    # Khong biet ten item mission -> KHONG keo bua (fail-closed)
-                    out.append({"action": d, "ok": False, "dry": self.dry,
-                                "note": f"khong thay item mission {self._mission_item_name!r} "
-                                        "trong ItemHangar"})
-                    continue
-                if ship_hangar_xy:
-                    spec = ctl.act_drag_item(item_xy, ship_hangar_xy)
-                elif ie.window() is None:
+                if ie.window() is None:
                     btn = self.eye._find_by_type("ButtonInventory", select_many=True)
                     if btn:
                         spec = ctl.act_menu_entry(self.eye.abs_center(btn[0]))
+                    out.append({"action": d, "ok": True, "dry": self.dry,
+                                "note": "mo Inventory truoc — keo o tick sau"})
+                    continue
+                if ie.selected_container() != "ItemHangar":
+                    item_hangar_xy = ie.tree_entry_xy("ItemHangar")
+                    if item_hangar_xy:
+                        spec = ctl.act_menu_entry(item_hangar_xy)   # click chon hangar
+                    else:
+                        out.append({"action": d, "ok": False, "dry": self.dry,
+                                    "note": "khong thay entry ItemHangar trong tree"})
+                        continue
+                else:
+                    hangars = {e["name"]: e["center"] for e in (ie.tree_entries() or [])}
+                    ship_hangar_xy = hangars.get("ShipHangar")
+                    item_xy = pick_item_xy(ie.items() or [], self._mission_item_name or "")
+                    if item_xy is None:
+                        # Khong biet ten item mission / khong co hang -> KHONG keo bua
+                        out.append({"action": d, "ok": False, "dry": self.dry,
+                                    "note": f"khong thay item mission {self._mission_item_name!r} "
+                                            "trong ItemHangar"})
+                        continue
+                    if ship_hangar_xy:
+                        spec = ctl.act_drag_item(item_xy, ship_hangar_xy)
 
             elif d == "set_destination":
-                # Lay link pickup hoac dropoff tu agent dialog
+                # Lay link pickup hoac dropoff tu agent dialog. Dialog dong -> mo
+                # chat agent truoc (11-11: khong co dialog thi khong co link,
+                # TravelTo se block "khong co route" mai mai).
                 ae = AgentEye(self.eye)
-                from ..agent import location_links
+                from ..agent import location_links, agents_panel
                 links = location_links(self.eye) or {}
                 target_xy = links.get("dropoff") if a.get("to") == self._cached_dropoff else links.get("pickup")
                 if target_xy:
-                    # Right click link de mo menu Set Destination
-                    spec = ctl.act_open_context_menu(target_xy)
+                    # Right click link -> CHO menu "Set Destination" hien -> click.
+                    # (11-11: chi mo menu roi bo / khong ai click -> route khong bao
+                    #  gio duoc set, TravelTo block vinh vien.)
+                    open_spec = ctl.act_open_context_menu(target_xy)
+                    ctl.execute(open_spec, eye=self.eye, dry=self.dry, win=self.win)
+                    xy_set = self.eye.wait_entry("Set Destination", timeout_s=6.0)
+                    if xy_set:
+                        spec = ctl.act_menu_entry(xy_set)
+                    else:
+                        out.append({"action": d, "ok": False, "dry": self.dry,
+                                    "note": "menu khong co 'Set Destination' sau 6s"})
+                        continue
+                else:
+                    ags = agents_panel(self.eye) or []
+                    ag = next((x for x in ags if x.get("available") and x.get("chat_xy")), None)
+                    if ag:
+                        spec = ctl.act_menu_entry(ag["chat_xy"])
+                        self._need_destination_retry = True
+                    out.append({"action": d, "ok": False, "dry": self.dry,
+                                "note": "dialog dong — mo chat agent de lay link, set_destination o tick sau"})
+                    continue
 
             elif d == "open_menu":
                 # Mo menu marker hoac selected item

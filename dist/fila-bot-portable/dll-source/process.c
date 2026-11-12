@@ -41,15 +41,15 @@ void FreeProcessSample(ProcessSample* ps)
 		UINT i;
 		for (i = 0; i < ps->used; ++i)
 		{
-			if (ps->committed_regions[i] == NULL || ps->committed_regions[i]->content == NULL)
+			if (ps->committed_regions[i] == NULL)
 				continue;
-			else
+			if (ps->committed_regions[i]->content != NULL)
 			{
 				free(ps->committed_regions[i]->content);
 				ps->committed_regions[i]->content = NULL;
-				free(ps->committed_regions[i]);
-				ps->committed_regions[i] = NULL;
 			}
+			free(ps->committed_regions[i]);
+			ps->committed_regions[i] = NULL;
 		}
 
 		free(ps->committed_regions);

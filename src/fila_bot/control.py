@@ -37,7 +37,7 @@ from . import input as inp
 class ActionSpec:
     name: str
     steps: list[dict[str, Any]]              # {"do":"combo","mods":[...],"key":"F1"} | {"do":"click","at":(x,y)} | {"do":"wait","s":1.0}
-    verify: Callable[[Any], bool] | None = None   # eye -> bool; None = trust
+    verify: Callable[[Any], bool] | None = None   # None = unverified delivery, NEVER observed success
     retry_max: int = 1                        # số lần bấm lại nếu verify fail
     verify_wait: float = 1.0                  # đợi bao lâu sau bấm trước khi check
     fallback: "ActionSpec | None" = None      # chạy khi primary fail hết retry (merge 2026-11-10)
@@ -102,7 +102,7 @@ def execute(spec: ActionSpec, eye: Any = None, dry: bool = True,
     spec.fallback tự chạy khi primary fail hết retry.
     """
     attempts = 0
-    verified = spec.verify is None      # không có verify → coi như ok ngay
+    verified = False
     input_log: list[dict[str, Any]] = []
     steps = _to_screen_steps(spec.steps, win, dry)
 
@@ -117,8 +117,9 @@ def execute(spec: ActionSpec, eye: Any = None, dry: bool = True,
         while attempts <= spec.retry_max:
             attempts += 1
             input_log += _run_steps(steps, dry, humanize=humanize)
+            if any(item.get("ok") is False for item in input_log):
+                break
             if spec.verify is None:
-                verified = True
                 break
             if not dry:
                 time.sleep(spec.verify_wait)
@@ -131,13 +132,18 @@ def execute(spec: ActionSpec, eye: Any = None, dry: bool = True,
         except Exception:      # noqa: BLE001 — nhả phím lỗi không được giết caller
             pass
 
-    if not verified and spec.fallback is not None:
+    fallback_ok = False
+    if spec.verify is not None and not verified and spec.fallback is not None:
         fb = execute(spec.fallback, eye=eye, dry=dry, win=win, humanize=humanize)
         input_log += fb.get("input_log", [])
-        verified = bool(fb.get("ok"))
+        verified = bool(fb.get("verified"))
+        fallback_ok = bool(fb.get("ok"))
         attempts += int(fb.get("attempts", 0))
 
-    return {"ok": verified, "attempts": attempts, "input_log": input_log,
+    failed = any(item.get("ok") is False for item in input_log)
+    ok = not failed and (verified or spec.verify is None or fallback_ok)
+    status = "FAILED" if not ok else "DRY_RUN" if dry else "OBSERVED_SUCCESS" if verified else "SENT"
+    return {"ok": ok, "status": status, "attempts": attempts, "input_log": input_log,
             "verified": verified, "executed_steps": len(input_log)}
 
 
@@ -281,11 +287,19 @@ def act_lock(entry_xy: tuple[int, int]) -> ActionSpec:
 
 
 def _verify_locked(eye) -> bool:
-    """Verify lock qua eye — CHƯA GROUND được node báo lock trên client thật
-    (2026-11-09: SelectedItemWnd chỉ là selection, chưa phải lock; chưa có target
-    trong tầm để test). Fail-closed: trả False cho tới khi ground được node lock
-    thật trong abyss — KHÔNG đoán."""
-    return False
+    """Verify lock by the client's OWN target bar (grounded).
+
+    Ground 2026-11-12: Sanderling's parser reads locked targets from
+    `TargetInBar` nodes and marks the active one via a descendant
+    `ActiveTargetOnBracket`. The reader emits exactly those type names, so a lock
+    is now verifiable instead of assumed: before this, this function was
+    hard-coded `return False`, so no lock was ever confirmed and the drone
+    `F` command had no target to attack.
+    """
+    try:
+        return eye.locked_target() is not None
+    except Exception:  # noqa: BLE001 — sim/legacy eye without target bar
+        return False
 
 
 def act_module(slot: int, rack: str = "high", enable: bool = True) -> ActionSpec:

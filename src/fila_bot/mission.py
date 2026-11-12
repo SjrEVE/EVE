@@ -194,6 +194,13 @@ class MissionEye:
                         out.append(texts[0])
         return out
 
+    def mission_entries_observation(self) -> tuple[bool, list[str] | None]:
+        """Return panel presence separately from titles; absent panel is unknown."""
+        observed = any(self._find_type(ptype) for ptype in self.MISSION_PANEL_TYPES)
+        if not observed:
+            return False, None
+        return True, self.mission_entries()
+
     # ---------------- overview: gate / beacon ----------------
     def _overview(self) -> list[dict[str, Any]]:
         return self.eye.overview_entries()
@@ -203,7 +210,67 @@ class MissionEye:
 
         Đây là khác biệt sống-còn: 'có selected item' ≠ 'đang trong combat'
         (ở Jita chọn stargate cũng có SelectedItemWnd).
+
+        Ground LIVE 2026-11-12 (Piak, mission 'Seek and Destroy'): overview có
+        'Caldari Navy Defense Post', Type 'Caldari Navy Defense Post' — một
+        STRUCTURE của hải quân, cách tàu 22,9 AU. Bản cũ nhận nó là hostile vì
+        tên chứa token phe 'Caldari Navy', rồi authorize_security_targets() thấy
+        protected faction và chặn TOÀN BỘ mission (BLOCKED ngay sau undock).
+        Hai luật rút ra:
+        - Chỉ SHIP đã phân loại được hull mới là hostile; structure/defense post
+          không phải mục tiêu.
+        - Liên hệ thuộc PROTECTED_FACTIONS (Empire Navy/CONCORD) KHÔNG phải
+          hostile: bot không bao giờ bắn chúng, nên chúng không được phép chặn
+          mission. Chúng vẫn được báo riêng qua protected_contacts() để có bằng
+          chứng, không im lặng bỏ qua.
         """
+        from .missions_db import COMBAT_FACTIONS, PROTECTED_FACTIONS
+        from .rats import classify
+        out = []
+        for e in self._overview():
+            name = e.get("Name") or ""
+            if not name:
+                continue
+            # Loại station/citadel/gate/b Beacon TRƯỚC khi classify — tên trạm
+            # chứa token faction ("Caldari Navy Assembly Plant") phải KHÔNG thành quái
+            etype = (e.get("Type") or "").lower()
+            ename = name.lower()
+            if any(t in etype for t in ("station", "citadel", "structure", "beacon",
+                                        "starbase", "platform", "warehouse", "hub",
+                                        "defense post", "jump gate", "wreck",
+                                        "container", "cargo")):
+                continue
+            if any(t in ename for t in ("assembly plant", "trade hub",
+                                        "station", "citadel")):
+                continue
+            # Ground LIVE 2026-11-12 (pocket sau khi clear): overview còn
+            # 'Pithi Arrogator Wreck' — xác tàu vẫn mang token phe + hull của
+            # con tàu đã chết, nên classify() gọi nó là Guristas/Pithi. Bắn vào
+            # xác tàu là vô nghĩa và làm bot tưởng pocket chưa sạch. Wreck /
+            # container / cargo là VẬT THỂ, không phải mục tiêu.
+            if any(t in ename for t in ("wreck", "container", "cargo")):
+                continue
+            c = classify(name)
+            if c.get("faction") in PROTECTED_FACTIONS:
+                continue
+            # Structure không có hull phân loại được -> không phải mục tiêu bắn.
+            if c.get("hull") is None and c.get("faction") not in COMBAT_FACTIONS:
+                continue
+            is_npc = c.get("faction") is not None or c.get("hull") is not None
+            if is_npc:
+                out.append({"name": name, "faction": c.get("faction"),
+                            "hull": c.get("hull"), "priority": c.get("priority"),
+                            "skip": c.get("skip"), "center": e.get("center"),
+                            "distance": e.get("Distance")})
+        return out
+
+    def protected_contacts(self) -> list[dict[str, Any]]:
+        """Ship/structure thuộc Empire Navy/CONCORD trong overview — KHÔNG bắn.
+
+        Tách khỏi hostiles() để một trạm/defense post của hải quân không chặn
+        mission hợp lệ, nhưng vẫn còn bằng chứng trong world snapshot.
+        """
+        from .missions_db import PROTECTED_FACTIONS
         from .rats import classify
         out = []
         for e in self._overview():
@@ -211,12 +278,9 @@ class MissionEye:
             if not name:
                 continue
             c = classify(name)
-            is_npc = c.get("faction") is not None or c.get("hull") is not None
-            if is_npc:
+            if c.get("faction") in PROTECTED_FACTIONS:
                 out.append({"name": name, "faction": c.get("faction"),
-                            "hull": c.get("hull"), "priority": c.get("priority"),
-                            "skip": c.get("skip"), "center": e.get("center"),
-                            "distance": e.get("Distance")})
+                            "type": e.get("Type"), "distance": e.get("Distance")})
         return out
 
     def gate_entries(self) -> list[dict[str, Any]]:
@@ -229,14 +293,23 @@ class MissionEye:
                             "distance": e.get("Distance")})
         return out
 
-    def mission_beacons(self) -> list[dict[str, Any]]:
-        """Entry overview trông giống beacon mission/deadspace."""
+    def mission_beacons(self, site_hint: str | None = None) -> list[dict[str, Any]]:
+        """Chi tra entry overview khi co TEN site da ground, khong warp vao beacon bat ky.
+
+        Ground 11-11 + nghien cuu cong dong (docs/MISSION_TRAVEL_RESEARCH_2026-11-11.md):
+        "Derelict Ruins | Celestial Beacon" la cosmic anomaly, KHONG phai mission
+        site. Cach dung la right-click empty space -> Agent Missions -> Encounter
+        (Deadspace) -> Warp to Location. EVE-Master/Sanderling cung chon dich theo
+        TEN/label, khong phai beacon dau tien. Thieu site_hint -> [] (fail-closed).
+        """
+        if not site_hint or not site_hint.strip():
+            return []
+        hint = site_hint.strip().lower()
         out = []
         for e in self._overview():
-            name = (e.get("Name") or "").lower()
-            typ = (e.get("Type") or "").lower()
-            if any(h in name for h in _MISSION_HINTS) or "beacon" in typ:
-                out.append({"name": e.get("Name"), "type": e.get("Type"),
+            name = (e.get("Name") or "")
+            if hint in name.lower():
+                out.append({"name": name, "type": e.get("Type"),
                             "center": e.get("center"), "distance": e.get("Distance")})
         return out
 

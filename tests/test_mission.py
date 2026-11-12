@@ -81,6 +81,10 @@ ok("space_no_gate", st_s.gates == [], str(st_s.gates))
 # beacon: dump thật ở Jita (station/stargate), KHÔNG có beacon mission → rỗng, không bịa
 ok("space_no_mission_beacon", st_s.mission_beacons == [], str(st_s.mission_beacons))
 
+# Jita dump có trạm "Caldari Navy Assembly Plant" — KHÔNG được nhận nhầm thành quái
+# (regression 11-11: thêm token Navy vào rats làm 2 station thành hostile)
+ok("space_hostiles_no_station", mes.hostiles() == [], str(mes.hostiles()))
+
 runner_s = MissionRunner(mes)
 acts_s = runner_s.next_actions()
 # ngoài space, không beacon, không route → BLOCKED với lý do rõ

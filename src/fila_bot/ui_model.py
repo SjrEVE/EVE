@@ -26,7 +26,7 @@ def build_supervisor(mode: str, sim: bool = True, dry: bool = True, dll: str | N
                      runs_dir: str | Path | None = None, *,
                      filament: str | None = None, max_runs: int | None = None,
                      max_missions: int | None = None, engine: str = "fsm",
-                     allow_unknown_sec: bool = False) -> Any:
+                     allow_unknown_sec: bool = False, profile: Any = None) -> Any:
     """Tao Supervisor cho 1 mode. Tham so duoc truyen xuong mode (khong hard-code).
 
     filament/max_runs  -> AbyssMode (truoc day CLI in ra filament nhung mode dung default)
@@ -44,6 +44,31 @@ def build_supervisor(mode: str, sim: bool = True, dry: bool = True, dll: str | N
 
     if mode not in MODES:
         raise ModeUnavailable(f"mode lạ: {mode}")
+    if mode == "security" and profile is not None:
+        from .mission_profile import load_profile, profile_errors
+        try:
+            profile = load_profile(profile)
+        except (ValueError, OSError) as exc:
+            raise ModeUnavailable(f"Mission profile: {exc}") from exc
+        if not sim and not dry:
+            errors = profile_errors(profile)
+            if errors:
+                raise ModeUnavailable("Mission profile: " + "; ".join(errors))
+    if mode == "security" and not sim and not dry and profile is None:
+        raise ModeUnavailable("Security LIVE requires a configured mission profile before input")
+    mission_session = None
+    if mode == "security" and profile is not None:
+        from .mission_session import MissionSession
+        try:
+            if all(profile.get(k) for k in ("character", "agent_id", "home_station")):
+                mission_session = MissionSession(profile["character"],
+                                                 profile["agent_id"],
+                                                 profile["home_station"],
+                                                 path=profile.get("session_file"))
+        except (ValueError, TypeError) as exc:
+            if profile.get("session_file"):
+                raise ModeUnavailable(f"Mission session: {exc}") from exc
+            mission_session = None
     rel = lambda: inp.release_all(dry_run=sim or dry)  # noqa: E731
     max_s = max_hours * 3600 if max_hours else None
     runlog = RunLog(runs_dir or Path(__file__).resolve().parents[2] / "runs")
@@ -67,15 +92,30 @@ def build_supervisor(mode: str, sim: bool = True, dry: bool = True, dll: str | N
                               kill_switch=inp.kill_switch_pressed, max_session_s=max_s,
                               runlog=runlog)
         else:
-            if not sim:
-                raise ModeUnavailable(
-                    f"{MODE_LABELS[mode]} LIVE: chưa ground combat site/overview/warp "
-                    "trên client thật — chỉ chạy được SIM")
-            from .sim_worlds import SecSim
             from .modes.security import SecurityMode
-            w = SecSim()
-            mode_obj = SecurityMode(runner=w)
-            return Supervisor(mode_obj, execute=w.apply, refresh=None, release_all=rel,
+            if sim:
+                # E2E sim: cung hop dong refresh -> tick -> apply nhu live,
+                # di toi terminal state that (IDLE_DONE) de soi deadlock/stall.
+                from .sim_worlds import SecurityE2ESim
+                w = SecurityE2ESim()
+                refresh = w.world
+                execute_fn = w.apply
+                runner_obj = w
+            else:
+                from .eye import Eye
+                from .modes.live_security import LiveSecurityRunner
+                runner_obj = LiveSecurityRunner(Eye(dll_path=dll), dry=dry, profile=profile)
+                # Courier mission delegate qua Distribution (đã ground load/giao/trả).
+                # DÙNG CHUNG EYE — DLL reader là singleton state, 2 instance riêng
+                # sẽ initialize lẫn nhau (probe 11-11: process thứ 2 crash).
+                from .modes.live_distribution import LiveDistributionRunner
+                runner_obj.dist_runner = LiveDistributionRunner(runner_obj.eye, dry=dry)
+                refresh = runner_obj.refresh
+                execute_fn = runner_obj.apply
+            mode_obj = SecurityMode(runner=runner_obj, max_missions=max_missions, is_sim=sim,
+                                    clock=w.clock if sim else time.monotonic,
+                                    session=mission_session)
+            return Supervisor(mode_obj, execute=execute_fn, refresh=refresh, release_all=rel,
                               kill_switch=inp.kill_switch_pressed, max_session_s=max_s,
                               runlog=runlog)
     bus = FileBus(bus_dir or Path(__file__).resolve().parents[2] / "bus")
@@ -161,8 +201,14 @@ class UiModel:
             self.sup.start_thread(self.tick)
         self.sup.send("START")
         self.started = time.time()
-        self._log(f"START {self.mode} sim={self.sim} dry={self.dry} "
-                  f"filament={self.filament} max_missions={self.max_missions}")
+        self._last_act: tuple[str, float] | None = None
+        self._log(f"START {self.mode} | SIM={self.sim} | DRY={self.dry}")
+        if self.sim:
+            self._log("[CHẾ ĐỘ] GIẢ LẬP (SIM): Bot chạy mô phỏng, KHÔNG kết nối EVE client.")
+        elif self.dry:
+            self._log("[CHẾ ĐỘ] AN TOÀN (DRY-RUN): Bot đọc game thật nhưng KHÔNG bấm chuột. Bỏ tích 'DRY' để bot tự bấm.")
+        else:
+            self._log("[CHẾ ĐỘ] LIVE THỰC THI: Bot sẽ tự động bấm chuột & phím thật vào EVE client!")
 
     def pause(self) -> None:
         if self.sup is None:
@@ -197,9 +243,25 @@ class UiModel:
             if t == "TICK":
                 ph = e.get("phase")
                 if ph != self.phase:
-                    self._log(f"phase {self.phase or '-'} → {ph}")
+                    self._log(f"Phase: {self.phase or '-'} → {ph}")
                 self.phase = ph
                 self.status = e.get("status") or {}
+                acts = e.get("acts") or []
+                prefix = "[DRY]" if self.dry else "[LIVE]"
+                for a in acts:
+                    if isinstance(a, dict):
+                        why = a.get("why") or a.get("do")
+                        xy = a.get("at")
+                        xy_str = f" tại {xy}" if xy else ""
+                        msg = f"{prefix} {why}{xy_str}"
+                    elif isinstance(a, tuple):
+                        msg = f"{prefix} {a[0]} {' '.join(str(x) for x in a[1:])}".strip()
+                    else:
+                        msg = f"{prefix} {a}"
+                    last_msg, last_t = getattr(self, "_last_act", ("", 0.0)) or ("", 0.0)
+                    if msg != last_msg or time.time() - last_t > 4.0:
+                        self._log(msg)
+                        self._last_act = (msg, time.time())
             elif t == "STATE_CHANGE":
                 self._log(f"{e.get('old')} → {e.get('state')} ({e.get('reason')})")
             elif t in ("CRASH", "WARN", "REJECT", "ESTOP"):
@@ -223,6 +285,7 @@ class UiModel:
         return {
             "state": s,
             "phase": self.phase or "-",
+            "detail": st.get("detail", ""),
             "banner": banner,
             "danger": bool(self.error) or self.no_escape,
             "stats": read_stats(self.runs_dir),

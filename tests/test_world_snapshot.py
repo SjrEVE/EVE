@@ -73,4 +73,27 @@ assert "jump" in w.selected_buttons
 assert "warpto" in w.selected_buttons
 ok("snapshot space: selected_buttons has 'jump' and 'warpto'")
 
+# 6. Live mission knowledge is three-valued: detected list, confirmed empty, or unknown.
+w = parse_world(make_eye("ui_tree_mission_accepted.json"))
+assert w.active_missions == ["Rancorous Researcher (1 of 5)"]
+assert w.mission_panel_observed is True
+ok("snapshot exposes active mission titles from the live Job Board")
+
+w = parse_world(make_eye("ui_tree_mission_docked.json"))
+assert w.active_missions is None
+assert w.mission_panel_observed is False
+assert w.location_state == "DOCKED"
+ok("missing Job Board is UNKNOWN, not falsely reported as no mission")
+
+# 7. Agent list and the station's explicitly Active ship card are surfaced.
+w = parse_world(make_eye("ui_tree_agents_panel.json"))
+assert w.agents_known is True
+assert w.agents[0]["name"] == "Iji Kiyura"
+assert w.agents[0]["level"] == 1 and w.agents[0]["division"] == "Distribution"
+ok("snapshot exposes live agent name, level, division, and availability")
+
+w = parse_world(make_eye("ui_tree_station_menu.json"))
+assert w.active_ship == {"name": "Amarr Shuttle - Oksora Aivo", "hull": "Amarr Shuttle"}
+ok("snapshot reads the Active ship card, not the Board-my button")
+
 print("\nALL OK test_world_snapshot")

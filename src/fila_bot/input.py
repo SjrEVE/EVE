@@ -161,6 +161,11 @@ def release_all(dry_run: bool = False, user32: Any = None) -> dict[str, Any]:
         if user32.GetAsyncKeyState(vk) & 0x8000:
             user32.mouse_event(up, 0, 0, 0, 0)
             released.append(name)
+    # Non-modifier keys held by a multi-step action (e.g. Q for approach) must
+    # also be released; a modifier-only sweep left them stuck in the game.
+    for vk in sorted(set(_ACTIVE_HOLDS) - {v for _, v in _RELEASE_KEYS}):
+        _hw_key_event(int(vk), is_up=True, user32=user32)
+        released.append(f"vk_0x{int(vk):02x}")
     _ACTIVE_HOLDS.clear()
     return {"ok": True, "released": released, "dry": False}
 

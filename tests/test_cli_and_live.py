@@ -30,18 +30,25 @@ def make_eye(fixture_name: str) -> Eye:
     return e
 
 
+from unittest import mock
+
 # 1. build_supervisor khong con nem ModeUnavailable cho live distribution.
-# Eye that co the nem RuntimeError khi EVE client tat (DLL initialize fail) —
-# do la fail-closed dung, khong phai bi chan logic. Chi assert khong co ModeUnavailable.
-try:
-    sup = build_supervisor("distribution", sim=False, dry=True)
-    assert sup is not None
-    assert hasattr(sup, "mode") and sup.mode.name == "distribution"
-    ok("build_supervisor: distribution LIVE (sim=False) hop le, khong bi chan")
-except ModeUnavailable as e:
-    raise AssertionError(f"distribution LIVE van bi chan ModeUnavailable: {e}")
-except RuntimeError as e:
-    ok("build_supervisor: khong con ModeUnavailable; DLL init fail vi EVE client tat (dung)")
+class _MockEye:
+    dll = None
+    root = None
+    def __init__(self, *args, **kwargs):
+        pass
+    def refresh(self):
+        return None
+
+with mock.patch("fila_bot.eye.Eye", _MockEye):
+    try:
+        sup = build_supervisor("distribution", sim=False, dry=True)
+        assert sup is not None
+        assert hasattr(sup, "mode") and sup.mode.name == "distribution"
+        ok("build_supervisor: distribution LIVE (sim=False) hop le, khong bi chan")
+    except ModeUnavailable as e:
+        raise AssertionError(f"distribution LIVE van bi chan ModeUnavailable: {e}")
 
 # 2. LiveDistributionRunner tren ui_tree_agent_offer.json
 eye_offer = make_eye("ui_tree_agent_offer.json")
@@ -72,9 +79,12 @@ acts_in = [
     {"do": "load_cargo"},
 ]
 res = runner.apply(acts_in)
-assert len(res) == 3
+# load_cargo: eye_offer khong co Inventory window -> runner append "mo Inventory truoc"
+# (tick sau se chon ItemHangar). 3 action tra ve day du.
+assert len(res) == 3, res
 assert res[0]["action"] == "click" and res[0]["ok"] is True and res[0]["dry"] is True
 assert res[1]["action"] == "hotkey_dock_jump" and res[1]["ok"] is True
+assert res[2]["action"] == "load_cargo"
 ok("LiveDistributionRunner.apply: thuc thi click va hotkey_dock_jump dry-run thanh cong")
 
 # 5. End-to-end integration: DistributionMode FSM + LiveDistributionRunner

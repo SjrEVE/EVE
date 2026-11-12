@@ -8,6 +8,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from unittest import mock
+
 from fila_bot.ui_model import ModeUnavailable, UiModel, build_supervisor  # noqa: E402
 
 
@@ -30,31 +32,30 @@ def pump(m, n=1):
         m.poll()
 
 
-# 1. security: LIVE chua ground -> FATAL ro rang; distribution LIVE da ground (G1-G7)
-try:
-    build_supervisor("security", sim=False, bus_dir=BUS)
-    raise AssertionError("security live phai raise")
-except ModeUnavailable as e:
-    assert "LIVE" in str(e), str(e)
-m = UiModel(factory=factory, threaded=False)
-m.mode, m.sim = "security", False
-m.start()
-v = m.view()
-assert m.sup is None and v["state"] == "IDLE" and v["banner"].startswith("FATAL")
-assert v["can_start"] and v["danger"]
-ok("security LIVE chua ground -> FATAL, nut Start van bat")
+# 1. security LIVE & distribution LIVE da ground -> build_supervisor hop le, khong FATAL ModeUnavailable.
+# Dung mock Eye de test suite khong phai scan live memory (20s) khi EVE client dang chay.
+class _MockEye:
+    dll = None
+    root = None
+    def __init__(self, *args, **kwargs):
+        pass
+    def refresh(self):
+        return None
 
-# 1a. distribution LIVE: build_supervisor khong con ModeUnavailable (G1-G7 da ground).
-# Eye that se fail khi client khong chay (DLL initialize fail) -> do la hanh vi DUNG,
-# khong phai loi architect. Chi assert khong nem ModeUnavailable.
-try:
-    sup_dist_live = build_supervisor("distribution", sim=False, dry=True, bus_dir=BUS)
-    assert sup_dist_live is not None and sup_dist_live.mode.name == "distribution"
-    ok("distribution LIVE da ground -> build_supervisor hop le, khong FATAL")
-except ModeUnavailable as e:
-    raise AssertionError(f"distribution LIVE van bi chan ModeUnavailable: {e}")
-except RuntimeError as e:
-    ok("distribution LIVE: khong con ModeUnavailable; DLL init fail vi EVE client tat (dung)")
+with mock.patch("fila_bot.eye.Eye", _MockEye):
+    try:
+        sup_sec_live = build_supervisor("security", sim=False, dry=True, bus_dir=BUS)
+        assert sup_sec_live is not None and sup_sec_live.mode.name == "security"
+        ok("security LIVE da ground -> build_supervisor hop le, khong FATAL")
+    except ModeUnavailable as e:
+        raise AssertionError(f"security LIVE van bi chan ModeUnavailable: {e}")
+
+    try:
+        sup_dist_live = build_supervisor("distribution", sim=False, dry=True, bus_dir=BUS)
+        assert sup_dist_live is not None and sup_dist_live.mode.name == "distribution"
+        ok("distribution LIVE da ground -> build_supervisor hop le, khong FATAL")
+    except ModeUnavailable as e:
+        raise AssertionError(f"distribution LIVE van bi chan ModeUnavailable: {e}")
 
 # 1b. distribution SIM: chay het vong courier (khong phai bang chung client)
 m = UiModel(factory=factory, threaded=False)

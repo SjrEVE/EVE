@@ -94,6 +94,16 @@ class AgentEye:
                     out.append(c)
         return out
 
+    def loaded(self) -> bool:
+        """True = dialog da render noi dung (co Edit briefing/objective — catalog
+        42 dump TQ: 16/16 AgentDialogueWindow load xong deu co 2 Edit).
+        False = dang load (LoadingWheel — dump TQ 2026-11-10 16:02: 60 node,
+        0 Edit, 0 Button) hoac cay rong bat thuong. Goi truoc khi tin offer."""
+        w = self.window()
+        if w is None:
+            return False
+        return any(n.get("type") == "Edit" for n in self.eye.walk(w))
+
     def button_xy(self, key: str) -> tuple[int, int] | None:
         """Toa do nut: uu tien Button._name that (G2 ground), roi text khop DUNG
         (khong substring: 'Accept' != 'Accepted'). Chi trong cua so agent."""
@@ -118,11 +128,6 @@ class AgentEye:
             return None
         blob = " ".join(tx)
         low = blob.lower()
-        mtype = ("courier" if ("transport objective" in low or "courier" in low
-                               or ("cargo" in low and "deliver" in low))
-                 else "encounter" if ("encounter" in low or "objective: destroy" in low
-                                      or "destroy" in low and "objectives" in low)
-                 else None)
         cargo_m3 = item = qty = None
         mc = _CARGO.search(blob)
         if mc:
@@ -138,7 +143,46 @@ class AgentEye:
                 mch = _CHAIN.search(title)
                 chain = (int(mch.group(1)), int(mch.group(2))) if mch else None
                 break
-        return {"type": mtype, "title": title, "chain": chain,
+
+        # Ground 11-11 tu dump TQ that (dumps/g2_offer_v3_165506.json va
+        # dumps/g10_turnin_dialog.json) + CCP SDE build 3682781:
+        #  - "Transport Objective" = courierMission that (agent Distribution).
+        #  - "Bring Item Objective / Acquire these goods" = killMission co item
+        #    objective (agent Security L1, title "Cargo Delivery").
+        # Cam: KHONG duoc suy "courier" tu cap tu ("cargo" + "deliver") hay title.
+        # Truoc day chinh cap tu nay bien Cargo Delivery thanh courier -> bi block
+        # TRUOC ca nut Accept (docs/MISSION_RESEARCH_DEEP_2026-11-11.md P0).
+        from .missions_db import template_kind  # local: tranh vong import
+        kind = template_kind(title)
+        has_transport = "transport objective" in low or "courier" in low
+        has_item = ("bring item objective" in low or "acquire these goods" in low
+                    or kind == "kill_item" or (item is not None and kind == "kill"))
+        # Ground LIVE 11-11 (agent Inikko Samanuni, "What's in a Name - Change of
+        # Address"): objective text "Give the diplomats enough time to evacuate.
+        # Engage any hostiles. Location 0.9 Hirtamon". Day la bang chung duong tinh
+        # mission co combat objective -> duoc phep di chuyen, NHUNG khong cap quyen
+        # ban (van can faction ID + title trong catalog, xem authorize_security_targets).
+        # Dung cum tu DAY DU, khong dung substring ngan de tranh khop oan infix.
+        has_combat = any(phrase in low for phrase in (
+            "engage any hostiles", "destroy all hostile", "eliminate the hostile",
+            "destroy the hostile"))
+        objective_kind = ("transport" if has_transport and not has_item
+                          else "item" if has_item else "combat" if has_combat else None)
+        # Ground LIVE 11-11 (client TQ): "Objective Destroy the Gallente Broadcast
+        # Tower. Location 0.9 New Caldari" va SelectedItemWnd nameLabel "Gallente
+        # Broadcast Tower". Day la TEN structure/site that, KHONG phai generic
+        # "Celestial Beacon" (Derelict Ruins). Chi dung de loc overview, khong de warp mu.
+        msite = re.search(r"Objective\s+Destroy (?:the )?([^.]+)\.", blob)
+        site_hint = msite.group(1).strip() if msite else None
+        if has_transport and not has_item:
+            mtype = "courier"
+        elif has_item or "encounter" in low or "destroy" in low:
+            mtype = "encounter"
+        else:
+            mtype = None
+        return {"type": mtype, "objective_kind": objective_kind, "template_kind": kind,
+                "site_hint": site_hint,
+                "title": title, "chain": chain,
                 "cargo_m3": cargo_m3, "cargo_item": item, "cargo_qty": qty,
                 "pickup": _loc(blob, "Pickup Location", ("Drop-off Location",)),
                 "dropoff": _loc(blob, "Drop-off Location", ("Cargo", "Rewards")),
@@ -254,6 +298,44 @@ def location_links(eye: Any) -> dict[str, tuple[int, int]] | None:
     if first[0][1] >= first[1][1]:      # pickup phai nam tren drop-off
         return None
     return {"pickup": first[0], "dropoff": first[1]}
+
+
+def mission_location_link(eye: Any) -> tuple[int, int] | None:
+    """Link toa do "Location <sec> <system>" trong objective_browser.
+
+    Ground 11-11 tu dump LIVE `ui_tree_e2e_06_live_cannot_complete.json`:
+    htmlstr co "Location 0.9 Hirtamon"; Link nam trong `Cell tablecell 0-3` cua
+    VirtualTable dong Location, tai (670, 352). Cac Link khac nam o `inlines`
+    (tieu de / objective), KHONG phai link toa do. Chi lay Link nam trong Cell.
+    Tra None khi khong thay objective_browser, khong co chu 'Location', hoac
+    khong co Link trong Cell (fail-closed, khong doan toa do).
+    """
+    wins = eye._find_by_type("AgentDialogueWindow", select_many=True) or []
+    if not wins:
+        return None
+    obj = None
+    for n in eye.walk(wins[0]):
+        if n.get("type") == "Edit" and (n.get("attrs") or {}).get("_name") == "objective_browser":
+            obj = n
+            break
+    if obj is None:
+        return None
+    sr = (obj.get("attrs") or {}).get("_sr")
+    html = sr.get("htmlstr", "") if isinstance(sr, dict) else ""
+    if "Location" not in html:
+        return None
+    candidates: list[tuple[int, int]] = []
+    for cell in eye.walk(obj):
+        if cell.get("type") != "Cell":
+            continue
+        for n in eye.walk(cell):
+            if n.get("type") == "Link":
+                xy = eye.abs_center(n)
+                if xy:
+                    candidates.append(xy)
+    if not candidates:
+        return None
+    return min(candidates, key=lambda c: (c[1], c[0]))
 
 
 def accept_rule(offer: dict[str, Any] | None, cargo_free_m3: float | None,

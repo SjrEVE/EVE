@@ -314,6 +314,70 @@ class Eye:
             return None
         return min(cols, key=lambda c: abs(c[0] - x))[1]
 
+    def targets_in_bar(self) -> list[dict[str, Any]]:
+        """Targets actually LOCKED by the client, read from what it really renders.
+
+        Ground 2026-11-12 (client source + live TQ):
+        - `targetInBar.py` defines `class TargetInBar(ContainerAutoSize)` and
+          `class TargetHealthBars(Container)` with `default_name = 'targetHealthBars'`.
+        - Sanderling selects locked targets by `pythonObjectTypeName == "TargetInBar"`
+          and marks the active one with a descendant `ActiveTargetOnBracket`.
+        BUT this reader build does not emit those Python type names: a full walk of
+        the live tree in space found 172 distinct types and NO `TargetInBar` /
+        `ActiveTargetOnBracket` at all. So the type-based rule returns nothing here.
+
+        What the client DOES render for a locked target is the health-bar container
+        named `targetHealthBars` (one per locked target) with `shieldBar`,
+        `armorBar`, `hullBar` children. Those names come from the client's own
+        source, so they are evidence, not a guess. This method therefore:
+          1. uses `TargetInBar` / `ActiveTargetOnBracket` when the tree has them
+             (other builds / future reader versions), and
+          2. otherwise falls back to `targetHealthBars` containers.
+        An empty list means "nothing locked" only when at least one of those
+        structures exists somewhere in the tree; when none exist at all the caller
+        gets [] and `targets_observable()` says False — never a silent lie.
+        """
+        out: list[dict[str, Any]] = []
+        for node in self._find_by_type("TargetInBar", select_many=True) or []:
+            texts = [t.strip() for t in self._texts_of_node(node) if t and t.strip()]
+            active = bool(self._find_by_type("ActiveTargetOnBracket", root=node,
+                                             select_many=True))
+            out.append({"texts": texts[:6],
+                        "name": texts[0] if texts else None,
+                        "is_active": active,
+                        "center": self.abs_center(node)})
+        if out:
+            return out
+        for node in self._find_by_name("targetHealthBars", select_many=True) or []:
+            texts = [t.strip() for t in self._texts_of_node(node) if t and t.strip()]
+            out.append({"texts": texts[:6],
+                        "name": texts[0] if texts else None,
+                        # Without ActiveTargetOnBracket we cannot tell WHICH of
+                        # several locked targets the drones would attack, so the
+                        # active flag stays None (unknown) rather than a guess.
+                        "is_active": None,
+                        "center": self.abs_center(node)})
+        return out
+
+    def targets_observable(self) -> bool:
+        """True when this tree contains any structure that can show a lock.
+
+        Ground LIVE 2026-11-12: the live client renders the target bar only when a
+        target is actually locked, so "no such node anywhere" cannot be told apart
+        from "nothing locked" — and treating it as 'no lock' made the bot refuse to
+        fire and then block. Say UNKNOWN instead.
+        """
+        if self._find_by_type("TargetInBar", select_many=True):
+            return True
+        return bool(self._find_by_name("targetHealthBars", select_many=True))
+
+    def locked_target(self) -> dict[str, Any] | None:
+        """The single ACTIVE target, or None when nothing is actively targeted."""
+        active = [t for t in self.targets_in_bar() if t.get("is_active")]
+        if len(active) == 1:
+            return active[0]
+        return None
+
     def selected_item(self) -> dict[str, Any] | None:
         """Selected Item window. Ground 2026-11-09: type 'SelectedItemWnd'
         (name='selecteditemview'), text ở _setText. Trả {name, texts, center} hoặc None."""
@@ -365,20 +429,67 @@ class Eye:
         return None
 
     def module_buttons(self) -> list[dict[str, Any]]:
-        """Module buttons trên HUD: [{center, is_active, hilite}].
-        Ground 2026-11-09: HUD mới dùng SlotsContainer; khi tàu CÓ module sẽ có
-        ModuleButton (chưa ground được vì tàu test chưa gắn module)."""
+        """Module buttons on the HUD, each tied to its OBSERVED ship slot.
+
+        Ground 2026-11-12 (live runtime fixture): SlotsContainer → ShipSlot
+        `_name=inFlightHighSlot1..` → ModuleButton `_name=ModuleButton_<typeID>`.
+        `ramp_active` is present on active-rack buttons but missing on some
+        launchers; a missing flag is UNKNOWN (None), never False.
+        """
         ship = self.ship_ui()
         if ship is None:
             return []
-        out = []
-        for btn in self._find_by_type("ModuleButton", root=ship):
-            attrs = btn.get("attrs", {}) or {}
-            out.append({
-                "center": self.abs_center(btn),
-                "is_active": attrs.get("isActive") if "isActive" in attrs else attrs.get("ramp_active"),
-                "hilite": bool(attrs.get("_name") == "hilite"),
-            })
+        import re
+        out: list[dict[str, Any]] = []
+
+        def visit(node: dict[str, Any], slot: str | None) -> None:
+            attrs = node.get("attrs", {}) or {}
+            if node.get("type") == "ShipSlot":
+                name = str(attrs.get("_name") or "")
+                if name.startswith("inFlight"):
+                    slot = name
+            if node.get("type") == "ModuleButton":
+                active = attrs.get("ramp_active")
+                if not isinstance(active, bool):
+                    active = attrs.get("isActive")
+                if not isinstance(active, bool):
+                    active = None
+                name = str(attrs.get("_name") or "")
+                m = re.match(r"^inFlight(High|Medium|Low)Slot([0-9]+)$", slot or "")
+                out.append({
+                    "center": self.abs_center(node),
+                    "is_active": active,
+                    "hilite": name == "hilite",
+                    "slot": slot,
+                    "rack": m.group(1).lower() if m else None,
+                    "index": int(m.group(2)) if m else None,
+                    "name": name or None,
+                    "type_id": (int(name.rsplit("_", 1)[1])
+                                if name.startswith("ModuleButton_") and name.rsplit("_", 1)[1].isdigit()
+                                else None),
+                })
+            for child in node.get("children") or []:
+                visit(child, slot)
+
+        visit(ship, None)
+        return out
+
+    def drones_observation(self) -> dict[str, Any]:
+        """Ground: DronesWindow labels in ui_tree_20261112_runtime.json.
+        Missing or conflicting counts are unknown, never zero by default.
+        """
+        import re
+        panels = self._find_by_type("DronesWindow", select_many=True)
+        panels = [p for p in panels if (p.get("attrs") or {}).get("_display") is not False]
+        out = {"observed": bool(panels), "in_space": None, "in_bay": None}
+        if len(panels) != 1:
+            return out
+        texts = self._texts_of_node(panels[0])
+        for key, pattern in (("in_space", r"^Drones in Space \(([0-9]+)(?:/[0-9]+)?\)$"),
+                             ("in_bay", r"^Drones in Bay \(([0-9]+)\)$")):
+            values = {int(m.group(1)) for t in texts if (m := re.fullmatch(pattern, t.strip()))}
+            if len(values) == 1:
+                out[key] = values.pop()
         return out
 
     def confirm_dialog(self) -> dict[str, Any] | None:
@@ -459,9 +570,85 @@ class Eye:
                 out["tabs"].append({"name": a.get("_name"), "center": self.abs_center(n)})
         return out
 
+    def active_ship_observation(self) -> tuple[bool, dict[str, str] | None]:
+        """Read the active hull from an OBSERVED panel, never from a lobby button.
+
+        The LobbyWnd ``Board my <ship>`` button is a candidate, not proof of the
+        ship currently boarded, so it is never used as the active hull.
+
+        Ground 11-11 (live client ``EVE - Kompi Yaken``): when docked, the hull is
+        in the FittingWindow ``nameCaption`` ("Gila - Kompi Yaken"), while the
+        lobby still showed a generic "Board my Corvette" button. Reading that
+        button as the hull produced a wrong "corvette" claim. Prefer ShipsPanel,
+        then FittingWindow; if neither is observed return (False, None).
+        """
+        lobbies = self._find_by_type("LobbyWnd", select_many=True)
+        panels = ([n for n in self.walk(lobbies[0]) if n.get("type") == "ShipsPanel"]
+                  if lobbies else [])
+        if panels:
+            active_ships: list[dict[str, str]] = []
+            for panel in panels:
+                for card in (n for n in self.walk(panel) if n.get("type") == "ShipItemCard"):
+                    state_texts: list[str] = []
+                    hull: str | None = None
+                    ship_name: str | None = None
+                    for node in self.walk(card):
+                        attrs = node.get("attrs", {}) or {}
+                        text = attrs.get("_setText") or attrs.get("_text")
+                        if isinstance(text, str) and text.strip():
+                            if node.get("type") == "TextDetail":
+                                hull = text.strip()
+                            elif node.get("type") == "TextBody" and " - " in text:
+                                ship_name = text.strip()
+                        if attrs.get("_name") == "activeState":
+                            for child in self.walk(node):
+                                child_text = (child.get("attrs", {}) or {}).get("_setText")
+                                if isinstance(child_text, str) and child_text.strip():
+                                    state_texts.append(child_text.strip())
+                    if "Active" in state_texts and hull and ship_name:
+                        active_ships.append({"name": ship_name, "hull": hull})
+            return True, active_ships[0] if len(active_ships) == 1 else None
+
+        # FittingWindow is opened in station and names the ship being fit.
+        fits = self._find_by_type("FittingWindow", select_many=True)
+        if fits:
+            for n in self.walk(fits[0]):
+                a = n.get("attrs") or {}
+                if a.get("_name") != "nameCaption":
+                    continue
+                label = a.get("_setText") or a.get("_text")
+                if isinstance(label, str) and label.strip():
+                    label = label.strip()
+                    hull = label.split(" - ")[0].strip() if " - " in label else label
+                    if hull and "board my" not in hull.lower():
+                        return True, {"name": label, "hull": hull}
+            return True, None      # window observed but caption not rendered yet
+        return False, None
+
     def is_docked(self) -> bool:
         """Đang docked: thấy station window (LobbyWnd) và KHÔNG có ShipUI."""
         return self.station_window() is not None and self.ship_ui() is None
+
+    def space_brackets(self) -> list[dict[str, Any]]:
+        """Identity-only projected brackets. Native renderObject coordinates are
+        not exported by the current reader; layout coordinates are NOT projected
+        click geometry. A matching item ID must still be resolved to a visible UI
+        target. Missing geometry remains None (zero alone is not missing).
+        """
+        out: list[dict[str, Any]] = []
+        for n in self.walk(self.root or {}):
+            a = n.get("attrs", {}) or {}
+            name = a.get("_name")
+            if not isinstance(name, str) or not name.startswith("__inflightbracket_"):
+                continue
+            texts = self._texts_of_node(n)
+            out.append({
+                "name": name,
+                "center": None,
+                "geometry_observed": False,
+                "label": (texts[0] if texts else None),
+            })
+        return out
 
     # ---------------- context menu (ground 2026-11-09) ----------------
     def context_menus(self) -> list[dict[str, Any]]:
@@ -508,6 +695,100 @@ class Eye:
                 if (t == want) if exact else (want and want in t):
                     return e["center"]
         return None
+
+    def mission_location_button(self) -> dict[str, Any] | None:
+        """Nút Location trong mission tracker — ground trên client TQ thật.
+
+        dumps/g11_docked_fresh.json: StatefulButton
+        _name='missionObjective_button_location_3016839', con EveLabelMedium
+        _name='label' _setText='Set Destination'. dumps/g8_opportunities_open.json
+        có 'No Destination' + 'WarpTo' (selectedItemWarpTo). Theo CCP/community,
+        nhãn nút này đổi 'Set Destination' -> 'Warp to Location' khi tàu ĐÃ ở đúng
+        hệ (docs/MISSION_TRAVEL_RESEARCH_2026-11-11.md §2, §6).
+
+        Trả {center, label, name} hoặc None. KHÔNG suy đích từ 'Celestial Beacon'
+        bất kỳ trong overview và KHÔNG bịa text menu.
+        """
+        nodes = self.find(type="StatefulButton", contains=True,
+                          _name="missionObjective_button_location_")
+        if not nodes:
+            return None
+        n = nodes[0]
+        label = ""
+        for d in self.walk(n):
+            if d is n:
+                continue
+            da = d.get("attrs") or {}
+            if da.get("_name") == "label":
+                t = da.get("_setText") or da.get("_text")
+                if isinstance(t, str) and t.strip():
+                    label = t.strip()
+                    break
+        return {"center": self.abs_center(n), "label": label,
+                "name": (n.get("attrs") or {}).get("_name")}
+
+    def mission_panel_observation(self) -> dict[str, Any] | None:
+        """Doc panel Opportunities / AgentMissionInfoPanelEntry dang mo.
+
+        Ground LIVE 11-11 20:3x (scratch/live_current_tree.json, client TQ
+        'EVE - Kompi Yaken'):
+          EveLabelLarge name=None  -> "What s in a Name  - Poke (3 of 5)"  (title)
+          EveLabelLarge name=title -> "Encounter (Deadspace)"              (loai mission)
+          EveLabelMedium           -> "You need to travel to Josameto 0.6" (he can toi)
+          EveLabelMedium name=label (con cua StatefulButton
+            missionObjective_button_location_3010986) -> "Set Destination"
+
+        Day la BANG CHUNG CUA GAME, khong phai suy luan tu title/catalog. Tra None
+        khi panel khong quan sat duoc — khong biet thi khong duoc doan.
+        """
+        panels = self._find_by_type("AgentMissionInfoPanelEntry", select_many=True)
+        if not panels:
+            return None
+        panel_name = str((panels[0].get("attrs") or {}).get("_name") or "")
+        agent_id = panel_name.partition(":")[2] if panel_name.startswith("agent_missions:") else None
+        out: dict[str, Any] = {"observed": True, "title": None,
+                               "agent_id": agent_id,
+                               "objective_complete": None,
+                               "type_label": None, "location_text": None,
+                               "objective_text": None,
+                               "location_button": None, "location_button_xy": None}
+        for n in self.walk(panels[0]):
+            if n is panels[0]:
+                continue
+            a = n.get("attrs") or {}
+            t = a.get("_setText") or a.get("_text")
+            if not isinstance(t, str) or not t.strip():
+                continue
+            s = t.strip()
+            nm = a.get("_name")
+            low = s.lower()
+            if nm == "title" and low == "complete mission":
+                # Grounded tracker header, NOT the AgentDialogue button.
+                # missions/client/ui/missionObjectiveData.py:AllObjectivesComplete.
+                out["objective_complete"] = True
+            elif nm == "title" and ("encounter" in low or "deadspace" in low
+                                  or "courier" in low or "mining" in low):
+                out["type_label"] = s
+            elif nm == "label" and ("destination" in low or "warp to" in low
+                                    or "undock" in low):
+                out["location_button"] = s
+            elif "you need to" in low:
+                out["objective_complete"] = False
+                # Ground 11-11: "You need to activate the Acceleration Gate"
+                # / "You need to travel to Josameto 0.6" — game tu bao buoc tiep.
+                out["objective_text"] = s
+                if "travel to" in low:
+                    out["location_text"] = s
+            elif "travel to" in low or "location" in low:
+                out["location_text"] = s
+            elif n.get("type") == "EveLabelLarge" and out["title"] is None:
+                out["title"] = s
+        btn = self.mission_location_button()
+        if btn:
+            out["location_button_xy"] = btn["center"]
+            if not out["location_button"]:
+                out["location_button"] = btn["label"] or None
+        return out
 
     def empty_point(self) -> tuple[int, int]:
         """Toạ độ vùng trống an toàn trong client area (để click đóng menu).

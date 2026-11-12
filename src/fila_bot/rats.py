@@ -62,6 +62,23 @@ FACTION_TOKENS = [
     ("Pacifier", "CONCORD"), ("Enforcer", "CONCORD"), ("Marshal", "CONCORD"),
     ("Skybreaker", "EDENCOM"), ("Stormbringer", "EDENCOM"), ("Thunderchild", "EDENCOM"),
     ("Lucifer", "Angel"), ("Cynabal", "Angel"), ("Dramiel", "Angel"),
+    ("Pithi", "Guristas"), ("Pithior", "Guristas"), ("Pithum", "Guristas"), ("Pithatis", "Guristas"), ("Pith", "Guristas"),
+    ("Coreli", "Serpentis"), ("Corelior", "Serpentis"), ("Corelum", "Serpentis"), ("Corelatis", "Serpentis"), ("Core", "Serpentis"),
+    ("Gistii", "Angel"), ("Gistior", "Angel"), ("Gistum", "Angel"), ("Gistatis", "Angel"), ("Gist", "Angel"),
+    ("Corpii", "Blood"), ("Corpior", "Blood"), ("Corpum", "Blood"), ("Corpantis", "Blood"), ("Corpus", "Blood"),
+    ("Centii", "Sansha"), ("Centior", "Sansha"), ("Centum", "Sansha"), ("Centatis", "Sansha"), ("Centus", "Sansha"),
+    ("Mercenary", "Mercenary"), ("Silverfish", "RogueDrone"), ("Decimator", "RogueDrone"), ("Infester", "RogueDrone"),
+    # --- Security mission rats (L1-L4, tên theo prefix faction — khác bộ token abyss) ---
+    # Empire Navy (chỉ gặp trong Counter-Attack hoặc mission chống faction)
+    ("Amarr Navy", "AmarrNavy"), ("Caldari Navy", "CaldariNavy"),
+    ("Federation Navy", "GallenteNavy"), ("Republic Fleet", "MinmatarNavy"),
+    ("Republic Security", "MinmatarNavy"), ("Imperial", "AmarrNavy"),
+    # Pirate faction thứ tự chung (Kappa/Campa/Arch/Gisti prefix Gila hay gặp)
+    ("Campa", "Angel"), ("Arch", "Angel"), ("Kappa", "Guristas"),
+    # Mission-only NPC (tên riêng trong objective)
+    ("Escort", "MissionNPC"), ("Commander", "MissionNPC"), ("Officer", "MissionNPC"),
+    ("Soldier", "MissionNPC"), ("Squad Leader", "MissionNPC"), ("Trooper", "MissionNPC"),
+    ("Swarm Soldier", "MissionNPC"),
 ]
 
 EWAR_RANK = {"web": 1, "neut": 2, "scram": 3, "logi": 3, "paint": 4, "td_damp": 4}
@@ -160,7 +177,13 @@ def classify(name: str) -> dict[str, Any]:
                  "Sentinel", "Deepwatcher", "Knight", "Hunter", "Fisher", "Priest",
                  "Trapper", "Smith", "Lookout", "Herald", "Torchbearer",
                  "Pacifier", "Enforcer", "Marshal", "Skybreaker", "Stormbringer",
-                 "Thunderchild", "Tyrannos", "Overmind"):
+                 "Thunderchild", "Tyrannos", "Overmind",
+                 "Pithi", "Pithior", "Pithum", "Pithatis", "Pith",
+                 "Coreli", "Corelior", "Corelum", "Corelatis", "Core",
+                 "Gistii", "Gistior", "Gistum", "Gistatis", "Gist",
+                 "Corpii", "Corpior", "Corpum", "Corpantis", "Corpus",
+                 "Centii", "Centior", "Centum", "Centatis", "Centus",
+                 "Mercenary"):
         if hull in name:
             out["hull"] = hull
             break
@@ -180,7 +203,13 @@ def classify(name: str) -> dict[str, Any]:
                        ("Lookout", "td_damp"), ("Herald", "td_damp"), ("Confuser", "td_damp"),
                        ("Fieldweaver", "logi"), ("Plateforger", "logi"), ("Preserver", "logi"),
                        ("Priest", "logi"), ("Burst", "logi"), ("Renewing", "logi"), ("Rodiva", "logi"),
-                       ("Cynabal", "web"), ("Cynabal", "neut")]:  # wiki: Cynabal = web+neut (Angel)
+                       ("Cynabal", "web"), ("Cynabal", "neut"),
+                       ("Arrogator", "web"), ("Invader", "web"), ("Infiltrator", "web"), ("Saboteur", "web"),
+                       ("Guard", "web"), ("Protector", "web"), ("Safeguard", "web"),
+                       ("Ambusher", "web"), ("Hunter", "web"), ("Impaler", "web"), ("Raider", "web"),
+                       ("Reaver", "web"), ("Follower", "web"), ("Worshipper", "web"),
+                       ("Scavenger", "web"), ("Ravager", "web"), ("Minion", "web"),
+                       ("Wingman", "web"), ("Infester", "web"), ("Decimator", "web")]:  # pirate ewar tokens
         if token in name and cls not in out["ewar"]:
             out["ewar"].append(cls)
             out[cls] = True

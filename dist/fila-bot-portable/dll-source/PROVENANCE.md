@@ -3,10 +3,23 @@
 `src/eve-memory-reader.dll` — build từ source trong `dll-source/` (fork chengyus
 của jamesalbert/eve-memory-reader, gốc: Sanderling line).
 
-- SHA256: `2c199580fcda860675175d4473d4c6948c6790c44dd67c4822e8f69511124265`
+- Current SHA256 (build 2026-11-11): `796288f360385d93e0ea61eaeb43931a830d3d05c0a4a073d507bd2db33c756d`
   (bản trước `14bc2b56...` — giữ backup tại vendor/.../eve-memory-reader.dll.bak-14bc)
 
-## Thay đổi build 2026-11-09 chiều (2c199580)
+## Current build 2026-11-11 — cold-start scan
+
+- Build: Zig 0.13.0 `cc -target x86_64-windows-gnu -O2 -DUNICODE -D_UNICODE -shared`
+  with `cache.c eve-memory-reader.c hashtable.c memory.c process.c python.c uitree.c`
+  and `-lpsapi -lkernel32 -luser32`.
+- Cold-start trên client TQ thật: `initialize()` 8.813s; poll đầu 0.130s, 597 UI nodes;
+  ba warm poll tiếp theo 0.080s, 0.077s, 0.079s. Read-only, không gửi input vào EVE.
+- Không copy toàn bộ committed memory vào DLL: chỉ lưu metadata vùng, đọc từng vùng khi cần;
+  tìm UIRoot type/instances trong MEM_PRIVATE, nhưng vẫn tìm metatype trên mọi vùng.
+- Fix crash: `DICT_KEYS_OF_INTEREST` có NULL sentinel; kiểm tra NULL/size trước khi đọc buffer
+  và trước `strcmp`; `FreeProcessSample` giải phóng metadata kể cả khi content NULL.
+- Verification: live UIRoot/cold/warm probe PASS; `tests/run_all.py`: 549 PASS, 0 FAIL.
+
+## Historical build 2026-11-09 chiều (2c199580)
 
 5. **Decode Bunch** (`read_python_type_bunch` trước RỖNG): ground từ Sanderling
    `ReadingFromPythonType_Bunch` — Bunch là dict, chỉ giữ `htmlstr` (text của
@@ -21,7 +34,7 @@ của jamesalbert/eve-memory-reader, gốc: Sanderling line).
 - Build: mingw-w64 (w64devkit GCC 16.2.0), Release x64, ngày 2026-11-09
 - Build lại: `bash dll-source/build_mingw.sh` (hoặc trỏ path tới gcc của w64devkit), hoặc MSVC:
   `msbuild eve-memory-reader.vcxproj /p:Configuration=Release /p:Platform=x64`
-- Verify: `sha256sum eve-memory-reader.dll` khớp hash trên; không khớp = KHÔNG dùng
+- Historical SHA256: `2c199580fcda860675175d4473d4c6948c6790c44dd67c4822e8f69511124265`.
 
 ## Thay đổi so với build 2026-11-07 (MSVC)
 
@@ -45,4 +58,3 @@ của jamesalbert/eve-memory-reader, gốc: Sanderling line).
 - Cap ở trạng thái **CẠN MỘT PHẦN** chưa quan sát được (chưa có module tiêu cap / warp chưa
   kích hoạt thành công). Công thức `aPercent < 20 = đoạn còn` lấy từ Sanderling (2019) —
   cần 1 lần cap <100% trên Photon HUD để chốt ngưỡng. Fail-closed vẫn giữ: không màu → None.
-- `Bunch` — chưa parse (không dùng tới).

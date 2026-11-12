@@ -23,6 +23,10 @@ class Mode:
     def tick(self, world: Any) -> list[Any]:  # pragma: no cover - interface
         raise NotImplementedError
 
+    def on_action_results(self, results: list[Any]) -> None:
+        """Optional read-back hook: executor delivery/verification results."""
+        return None
+
     def request_safe_stop(self) -> None:
         self.stop_requested = True
 

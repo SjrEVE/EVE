@@ -11,7 +11,7 @@ ULONGLONG cache_last_flushed = 0;
 char* ui_json = NULL;
 HANDLE hProcess;
 
-char* DICT_KEYS_OF_INTEREST[25] = {
+char* DICT_KEYS_OF_INTEREST[26] = {
 	"_top", "_left", "_width", "_height", "_displayX", "_displayY",
 	"_displayHeight", "_displayWidth",
 	"_name", "_text", "_setText",
@@ -38,7 +38,7 @@ char* DICT_KEYS_OF_INTEREST[25] = {
 	"_sr",
 
 	//  Found in "_sr" Bunch
-	"htmlstr"
+	"htmlstr", NULL
 };
 
 ULONGLONG find_min(const ULONGLONG* arr, UINT length) {
@@ -100,26 +100,14 @@ void read_committed_memory_regions_from_pid(DWORD pid, BOOL with_content)
 		{
 			ULONGLONG bytesRead = 0;
 			byte* regionContentBuffer = malloc(sizeof(byte) * lpBuffer.RegionSize);
-			if (!ReadProcessMemory(hProcess, (LPCVOID)lpBuffer.BaseAddress, regionContentBuffer, lpBuffer.RegionSize, &bytesRead))
+			if (regionContentBuffer == NULL)
 			{
-				if (regionContentBuffer != NULL)
-				{
-					free(regionContentBuffer);
-					regionContentBuffer = NULL;
-				}
-				exit(1);
+				continue;
 			}
-
-			if (bytesRead != lpBuffer.RegionSize)
+			if (!ReadProcessMemory(hProcess, (LPCVOID)lpBuffer.BaseAddress, regionContentBuffer, lpBuffer.RegionSize, &bytesRead) || bytesRead != lpBuffer.RegionSize)
 			{
-				if (regionContentBuffer != NULL)
-				{
-					free(regionContentBuffer);
-					regionContentBuffer = NULL;
-				}
-				// TODO: this is recoverable, just try again
-				printf("Failed to ReadProcessMemory at 0x%llx, only read %lld bytes; expecting %lld bytes.", lpBuffer.BaseAddress, bytesRead, lpBuffer.RegionSize);
-				exit(1);
+				free(regionContentBuffer);
+				continue;
 			}
 
 			regionContent = regionContentBuffer;
@@ -128,11 +116,15 @@ void read_committed_memory_regions_from_pid(DWORD pid, BOOL with_content)
 		CommittedRegion* cr = malloc(sizeof(CommittedRegion));
 		if (cr == NULL)
 		{
-			printf("error creating CommittedRegion");
-			exit(1);
+			if (regionContent != NULL)
+			{
+				free(regionContent);
+			}
+			continue;
 		}
 		cr->address = (ULONGLONG)lpBuffer.BaseAddress;
 		cr->region_size = lpBuffer.RegionSize;
+		cr->type = lpBuffer.Type;
 		cr->content = regionContent;
 		InsertCommittedRegion(ps, cr);
 	}
@@ -142,7 +134,7 @@ void get_process_sample_from_pid(DWORD pid)
 {
 	ps = malloc(sizeof(ProcessSample));
 	InitProcessSample(ps);
-	read_committed_memory_regions_from_pid(pid, TRUE);
+	read_committed_memory_regions_from_pid(pid, FALSE);
 }
 
 byte* slice_byte_array(byte* original, ULONGLONG size, UINT start, UINT end)
@@ -167,7 +159,11 @@ ULONGLONG cast_byte_array_to_ulong(byte* content, ULONGLONG size)
 
 ULONGLONG* cast_byte_array_to_ulong_array(byte* content, ULONGLONG size)
 {
+	if (content == NULL || size < sizeof(ULONGLONG) || size % sizeof(ULONGLONG) != 0)
+		return NULL;
 	ULONGLONG* result = malloc(sizeof(ULONGLONG) * (size/sizeof(ULONGLONG)));
+	if (result == NULL)
+		return NULL;
 	UINT ulongs_created = 0;
 	UINT i;
 	for (i = 0; i < size; i += 8)
@@ -188,35 +184,21 @@ ULONGLONG* cast_byte_array_to_ulong_array(byte* content, ULONGLONG size)
 
 byte* read_bytes(ULONGLONG address, ULONGLONG length, ULONGLONG* bytes_read)
 {
-
-	byte* regionContentBuffer = malloc(sizeof(byte) * length);
-	if (!ReadProcessMemory(hProcess, (LPCVOID)address, regionContentBuffer, _msize(regionContentBuffer), bytes_read))
-	{
-		if (regionContentBuffer != NULL)
-		{
-			free(regionContentBuffer);
-			regionContentBuffer = NULL;
-		}
+	if (bytes_read == NULL || length == 0)
 		return NULL;
-	}
-
+	byte* regionContentBuffer = malloc(sizeof(byte) * length);
 	if (regionContentBuffer == NULL)
 		return NULL;
-
-	if (bytes_read == 0)
+	if (!ReadProcessMemory(hProcess, (LPCVOID)address, regionContentBuffer, (SIZE_T)length, bytes_read))
 	{
 		free(regionContentBuffer);
-		regionContentBuffer = NULL;
 		return NULL;
 	}
-
-	if (ULLONG_MAX < bytes_read)
+	if (*bytes_read == 0)
 	{
 		free(regionContentBuffer);
-		regionContentBuffer = NULL;
 		return NULL;
 	}
-
 	return regionContentBuffer;
 }
 
@@ -247,16 +229,19 @@ char* read_string_from_address(ULONGLONG address)
 
 ULONGLONG* read_memory_region_content_as_ulong_array(CommittedRegion* cr)
 {
-	ULONGLONG bytes_read = 0;
-	byte* as_byte_array = read_bytes(cr->address, cr->region_size, &bytes_read);
-
-	if (as_byte_array == NULL)
+	if (cr == NULL || cr->region_size < sizeof(ULONGLONG)
+		|| cr->region_size % sizeof(ULONGLONG) != 0)
 		return NULL;
-
-	ULONGLONG* response = cast_byte_array_to_ulong_array(as_byte_array, cr->region_size);
-	free(as_byte_array);
-	as_byte_array = NULL;
-	return response;
+	ULONGLONG bytes_read = 0;
+	byte* region_bytes = read_bytes(cr->address, cr->region_size, &bytes_read);
+	if (region_bytes == NULL || bytes_read != cr->region_size)
+	{
+		free(region_bytes);
+		return NULL;
+	}
+	ULONGLONG* words = cast_byte_array_to_ulong_array(region_bytes, cr->region_size);
+	free(region_bytes);
+	return words;
 }
 
 Addresses* find_python_type_object_type_candidates_within_region(CommittedRegion* cr)
@@ -297,7 +282,6 @@ Addresses* find_python_type_object_type_candidates_within_region(CommittedRegion
 		}
 	}
 	free(memory_region_ulong);
-	memory_region_ulong = NULL;
 	return candidates;
 }
 
@@ -360,7 +344,6 @@ Addresses* find_python_type_objects_candidates_within_region(CommittedRegion* cr
 		}
 	}
 	free(memory_region_ulong);
-	memory_region_ulong = NULL;
 	return candidates;
 }
 
@@ -376,6 +359,9 @@ Addresses* find_python_type_objects_candidates(Addresses* previous_candidates)
 	unsigned int i;
 	for (i = 0; i < ps->used; ++i)
 	{
+		/* Dynamic Python class objects live in private heap pages. */
+		if (ps->committed_regions[i]->type != MEM_PRIVATE)
+			continue;
 		InsertAddresses(candidates, find_python_type_objects_candidates_within_region(ps->committed_regions[i], previous_candidates, min_candidate, max_candidate));
 		if (candidates->used > 0)
 			break;
@@ -410,7 +396,6 @@ Addresses* find_python_type_candidates_within_region(CommittedRegion* cr, Addres
 		InsertAddress(candidates, candidate_address_in_process);
 	}
 	free(memory_region_ulong);
-	memory_region_ulong = NULL;
 	return candidates;
 }
 
@@ -426,6 +411,9 @@ Addresses* find_python_type_candidates(Addresses* previous_candidates)
 	unsigned int i;
 	for (i = 0; i < ps->used; ++i)
 	{
+		/* UIRoot instances are dynamic Python heap objects; skip image/mapped pages. */
+		if (ps->committed_regions[i]->type != MEM_PRIVATE)
+			continue;
 		InsertAddresses(candidates, find_python_type_candidates_within_region(ps->committed_regions[i], previous_candidates, min_candidate, max_candidate));
 	}
 	return candidates;
@@ -446,19 +434,19 @@ Addresses* get_ui_roots_from_process_sample_file()
 
 BOOL bytes_array_contains(byte* bytes, ULONGLONG size, ULONGLONG compareVal)
 {
-	if (bytes == NULL) return FALSE;
-	UINT i;
-	ULONGLONG x = bytes[size - 1];
-	if (x == compareVal)
-		return TRUE;
-	bytes[size - 1] = compareVal;
-	for (i = 0; bytes[i] != compareVal; i++);
-	bytes[size - 1] = x;
-	return i != bytes - 1;
+	if (bytes == NULL || size == 0)
+		return FALSE;
+	ULONGLONG i;
+	for (i = 0; i < size; ++i)
+		if (bytes[i] == (byte)compareVal)
+			return TRUE;
+	return FALSE;
 }
 
 BOOL string_array_contains(char* strings[], char* compareVal)
 {
+	if (strings == NULL || compareVal == NULL)
+		return FALSE;
 	UINT i = 0;
 	while (strings[i]) {
 		if (strcmp(strings[i], compareVal) == 0) {
@@ -491,8 +479,12 @@ char* get_python_type_name_from_python_type_object_address(ULONGLONG address)
 
 	bytes_read = 0;
 	byte* name_bytes = read_bytes(tp_name, 100, &bytes_read);
-	if (!bytes_array_contains(name_bytes, bytes_read, 0))
+	if (name_bytes == NULL || bytes_read == 0 || !bytes_array_contains(name_bytes, bytes_read, 0))
+	{
+		free(name_bytes);
+		free(type_object_memory);
 		return NULL;
+	}
 	
 	UINT length = 0;
 	UINT i = 0;
@@ -1061,22 +1053,24 @@ UITreeNode** read_children(UITreeNodeDictEntryList* dict_entries_of_interest, in
 		for (i = 0; i < children_dict_entries->used; ++i)
 		{
 			char* python_type_name = get_python_type_name_from_python_object_address(children_dict_entries->data[i]->key);
+			if (python_type_name == NULL)
+				continue;
 			if (strcmp(python_type_name, "str") != 0)
 			{
 				free(python_type_name);
-				python_type_name = NULL;
 				continue;
 			}
+			free(python_type_name);
 			char* key_string = read_python_string_value(children_dict_entries->data[i]->key, 4000);
+			if (key_string == NULL)
+				continue;
 			if (strcmp(key_string, "_childrenObjects") == 0)
 			{
 				children_entry = children_dict_entries->data[i];
-				free(python_type_name);
 				free(key_string);
-				python_type_name = NULL;
-				key_string = NULL;
 				break;
 			}
+			free(key_string);
 		}
 
 		if (children_entry == NULL)
@@ -1280,6 +1274,8 @@ UITreeNode* read_ui_tree_from_address(ULONGLONG address, int max_depth)
 	for (i = 0; i < dict_entries->used; ++i)
 	{
 		char* key_object_type_name = get_python_type_name_from_python_object_address(dict_entries->data[i]->key);
+		if (key_object_type_name == NULL)
+			continue;
 
 		if (strcmp(key_object_type_name, "str") != 0)
 		{
@@ -1291,6 +1287,8 @@ UITreeNode* read_ui_tree_from_address(ULONGLONG address, int max_depth)
 		key_object_type_name = NULL;
 
 		char* key_string = read_python_string_value(dict_entries->data[i]->key, 4000);
+		if (key_string == NULL)
+			continue;
 
 		if (!string_array_contains(DICT_KEYS_OF_INTEREST, key_string))
 		{

@@ -139,7 +139,7 @@ def _read_window_geometry(hwnd: int, pid: int, title: str) -> dict[str, Any] | N
     }
 
 
-def find_all_client_windows(process_name: str = PROCESS_NAME) -> list[dict[str, Any]]:
+def find_all_client_windows(process_name: str = PROCESS_NAME, target_pid: int | None = None) -> list[dict[str, Any]]:
     """Enumerate all visible EVE Online (`exefile.exe`) client windows with live geometry."""
     if not hasattr(ctypes, "windll"):
         return []
@@ -156,9 +156,23 @@ def find_all_client_windows(process_name: str = PROCESS_NAME) -> list[dict[str, 
         pid = _get_window_pid(hwnd)
         proc_name = _get_process_basename(pid).lower()
         title = _get_window_title(hwnd)
-        if proc_name == target_proc or (not proc_name and title.startswith("EVE - ")):
+        matched = (
+            proc_name == target_proc
+            or (target_pid is not None and pid == int(target_pid))
+            or (not proc_name and title and ("eve - " in title.lower() or title.lower() == "eve"))
+        )
+        if matched:
+            # Ground LIVE 11-11: Boss (hoac click empty) minimize EVE ->
+            # GetClientRect tra 0x0 -> find_client_window() = None -> CLI live
+            # chet "Khong tim thay cua so EVE". Khoi phuc truoc khi doc geometry.
+            restored = bool(user32.IsIconic(wintypes.HWND(hwnd)))
+            if restored:
+                user32.ShowWindow(wintypes.HWND(hwnd), SW_RESTORE)
+                import time as _t
+                _t.sleep(0.35)
             geom = _read_window_geometry(hwnd, pid, title)
             if geom is not None:
+                geom["restored"] = restored
                 found.append(geom)
         return True
 
@@ -169,7 +183,7 @@ def find_all_client_windows(process_name: str = PROCESS_NAME) -> list[dict[str, 
 
 def find_client_window(pid: int | None = None, title_contains: str | None = None) -> dict[str, Any] | None:
     """Locate the target EVE Online client window by optional PID or character name substring."""
-    windows = find_all_client_windows()
+    windows = find_all_client_windows(target_pid=pid)
     for w in windows:
         if pid is not None and w["pid"] != int(pid):
             continue
@@ -254,6 +268,25 @@ def is_reachable(win: dict[str, Any] | None, screen_xy: tuple[int, int]) -> bool
     if target_pid and owner_pid == target_pid:
         return True
     return False
+
+
+def is_foreground(win: dict[str, Any] | None,
+                  get_foreground: Any = None) -> bool:
+    """True when the EVE client owns keyboard focus (safe to send keys/clicks)."""
+    if not win:
+        return True
+    if not hasattr(ctypes, "windll") and get_foreground is None:
+        return True
+    try:
+        fg = (get_foreground() if get_foreground is not None
+              else ctypes.windll.user32.GetForegroundWindow())
+    except Exception:
+        return False
+    hwnd = int(win.get("hwnd", 0))
+    pid = int(win.get("pid", 0))
+    if hwnd and int(fg) == hwnd:
+        return True
+    return bool(pid and _get_window_pid(int(fg)) == pid)
 
 
 def focus(win: dict[str, Any] | None) -> bool:

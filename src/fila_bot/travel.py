@@ -109,6 +109,10 @@ class TravelTo:
                 self.state = "ARRIVED"
                 return [{"do": "arrived", "station": w.get("station"), "jumps": self.jumps}]
             if not self.had_route and not markers:
+                # Vừa bấm Set Destination: EVE tính route mất 1-2s -> chờ có hạn
+                # (11-11: block ngay tick đầu làm courier không bao giờ khởi hành)
+                if self.no_route <= 12:      # ~12 tick (tick 0.5-1s) trước khi bỏ cuộc
+                    return [{"do": "wait", "why": f"chờ route sau Set Destination ({self.no_route})"}]
                 return self._block("đang dock và không có route — set destination trước")
             return [{"do": "need_undock", "why": "còn route nhưng đang dock"}]
 

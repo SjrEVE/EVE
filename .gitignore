@@ -32,3 +32,17 @@ README.md
 
 handoff/
 
+# dữ liệu local — raw dumps/scratch chứa tên nhân vật + chat, KHÔNG publish (plan MissionRunner §13)
+dumps/
+scratch/
+.hermes/
+.impeccable/
+
+# per-machine build info + binary
+BUILD_INFO.json
+tests/.last_run.txt
+FilaBot.exe
+
+# profile thật của máy này (repo public) — chỉ commit security-profile.example.json
+config/security-profile.kompi.json
+

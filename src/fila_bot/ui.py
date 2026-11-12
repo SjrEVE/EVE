@@ -13,6 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fila_bot.ui_model import MODE_LABELS, MODES, UiModel  # noqa: E402
+from fila_bot.version import short  # noqa: E402
 
 
 def smoke(n: int) -> int:
@@ -29,13 +30,13 @@ def smoke(n: int) -> int:
     return 0 if v["state"] != "IDLE" or v["runs"] else 1
 
 
-def run_window(auto_close_ms: int = 0) -> int:
+def _legacy_run_window(auto_close_ms: int = 0) -> int:
     import tkinter as tk
     from tkinter import messagebox, ttk
 
     m = UiModel()
     root = tk.Tk()
-    root.title("fila-bot — Control Center")
+    root.title(f"fila-bot {short()} — Control Center")
     root.geometry("780x600")
 
     top = ttk.Frame(root, padding=8)
@@ -156,7 +157,9 @@ def run_window(auto_close_ms: int = 0) -> int:
                     f"Run xong: {v['runs']}   HP: {v['hp']}   Filament: {v['filaments']}   "
                     f"Thoi gian: {v['elapsed']}\n")
         else:
-            body = (f"Trang thai: {v['state']}   Phase: {v['phase']}\n"
+            detail = v.get("detail")
+            dt_str = f"   ({detail})" if detail else ""
+            body = (f"Trang thai: {v['state']}   Phase: {v['phase']}{dt_str}\n"
                     f"Mission xong: {v['runs']}   Tu choi: {v.get('declined', 0)}   "
                     f"Thoi gian: {v['elapsed']}\n")
         info.set(body + tail)
@@ -180,6 +183,12 @@ def run_window(auto_close_ms: int = 0) -> int:
     refresh()
     root.mainloop()
     return 0
+
+
+def run_window(auto_close_ms: int = 0) -> int:
+    """Launch the redesign while retaining the old window for rollback."""
+    from .ui_redesign import run_window as redesigned_window
+    return redesigned_window(auto_close_ms=auto_close_ms)
 
 
 def main() -> int:

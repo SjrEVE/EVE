@@ -24,7 +24,7 @@ def main() -> int:
         nonlocal n_pass
         assert cond, msg
         n_pass += 1
-        print(f"  [OK] {msg}")
+        print(f"  [PASS] {msg}")
 
     freelance = json.loads(FREELANCE.read_text(encoding="utf-8"))
     data = parse_jobboard(freelance)
@@ -56,7 +56,7 @@ def main() -> int:
     txt = format_summary(data)
     ok("JobBoardWindow chua mo" not in txt, "format khong bao chua mo")
     ok("Akiainavas" in txt, "format co system Akiainavas")
-    print(f"[OK] test_opportunities_parse: {n_pass} pass")
+    print(f"[PASS] test_opportunities_parse: {n_pass} pass")
     return 0
 
 

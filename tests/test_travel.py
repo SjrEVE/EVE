@@ -60,10 +60,17 @@ a = t.tick(w(markers=(), docked=True), 5)
 assert a[0]["do"] == "arrived"
 ok("docked + hết route → ARRIVED")
 
-# 7. đang dock không có route → BLOCKED
+# 7. đang dock không có route → WAIT grace ngắn rồi BLOCKED (11-11: Set Destination
+#    cần 1-2s để EVE tính route — block ngay tick đầu làm courier không khởi hành được)
 t = TravelTo()
-assert t.tick(w(markers=(), docked=True), 0)[0]["do"] == "blocked"
-ok("dock không route → BLOCKED")
+a7 = None
+for i7 in range(15):
+    a7 = t.tick(w(markers=(), docked=True), i7 * 0.5)
+    assert a7[0]["do"] in ("wait", "blocked"), a7
+    if a7[0]["do"] == "blocked":
+        break
+assert a7[0]["do"] == "blocked", a7
+ok("dock không route → chờ grace rồi BLOCKED (chờ route sau Set Destination)")
 
 # 8. menu không có dock/jump → BLOCKED
 t = TravelTo()

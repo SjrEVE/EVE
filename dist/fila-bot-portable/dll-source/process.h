@@ -12,6 +12,7 @@ typedef struct
 {
 	ULONGLONG address;
 	ULONGLONG region_size;
+	DWORD type;
 	byte* content;
 } CommittedRegion;
 
