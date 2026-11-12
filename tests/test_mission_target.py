@@ -30,8 +30,10 @@ print('[PASS] entry without a real center cannot authorize a click')
 assert resolve_objective_target('You need to activate the Acceleration Gate', entries) is None
 print('[PASS] non-approach objective does not select an overview target')
 
+# Ground 13-11: 'AU' parse ĐƯỢC đơn vị (3 AU = 448.8 tỷ m) — FSM tự quyết
+# out-of-range; helper không được trả None (unknown) cho distance biết chắc.
 assert resolve_objective_target(TEXT, [{"Name": "Fire Cloud", "center": (1, 2),
-                                       "Distance": "3 AU"}])['distance_m'] is None
-print('[PASS] unparseable/remote distance stays UNKNOWN, never zero')
+                                       "Distance": "3 AU"}])['distance_m'] == 3 * 149_597_870_700.0
+print('[PASS] AU distance parsed with true unit, FSM decides out-of-range')
 
 print('\nKet qua: 6 PASS / 0 FAIL')

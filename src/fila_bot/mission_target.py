@@ -14,14 +14,27 @@ from .objective_ref import APPROACH, objective_reference
 
 
 def _distance_m(raw: Any) -> float | None:
+    """Parse chuỗi Distance của overview thành mét.
+
+    Ground LIVE 2026-11-13 (Boss: 'đọc toàn nhầm'): EVE overview Distance có
+    3 dạng — '2,5 km' / '500 m' / '1.5 AU'. 'AU' là HÀNG CHỤC TRIỆU km:
+    1 AU = 149.597.870.7 m. Bản cũ trả None cho AU → mọi logic 'in range'
+    coi như không biết khoảng cách → orbit/lock/approach quyết sai.
+    AU parse đúng đơn vị; giá trị > 1e12 m là AU thật, không phải m.
+    """
     if not isinstance(raw, str):
         return None
+    # EVE client luôn render locale EN-US: ',' = ngăn ngàn ('1,200 m' = 1200 m),
+    # '.' = thập phân. Ground 13-11: bản cũ replace(',','') đúng cho ngàn nhưng
+    # không xử AU; bản thử replace(',','.') sai '1,200 m' thành 1.2 m (x1000!).
     text = raw.strip().lower().replace(",", "")
     try:
         if text.endswith(" km"):
             return float(text[:-3].strip()) * 1000.0
         if text.endswith(" m"):
             return float(text[:-2].strip())
+        if text.endswith(" au"):
+            return float(text[:-3].strip()) * 149_597_870_700.0
     except ValueError:
         return None
     return None

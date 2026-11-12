@@ -277,6 +277,13 @@ class Eye:
                 name = self._nearest_column(lx, header_cols)
                 if name:
                     rec[name] = txt
+            # Guard "đọc toàn nhầm" (live 13-11): EVE overview luôn có Distance
+            # ở CỘT ĐẦU. Nếu header map lệch (tab/filter đổi) làm mất key
+            # Distance nhưng texts[0] rõ ràng là một khoảng cách — gán đúng chỗ.
+            if "Distance" not in rec and rec["texts_left_to_right"]:
+                first = rec["texts_left_to_right"][0].strip().lower()
+                if first.endswith((" m", " km", " au")):
+                    rec["Distance"] = rec["texts_left_to_right"][0].strip()
             rec["center"] = self.abs_center(entry)
             out.append(rec)
         return out
