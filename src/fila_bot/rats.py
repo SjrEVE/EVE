@@ -76,6 +76,8 @@ FACTION_TOKENS = [
     # Pirate faction thứ tự chung (Kappa/Campa/Arch/Gisti prefix Gila hay gặp)
     ("Campa", "Angel"), ("Arch", "Angel"), ("Kappa", "Guristas"),
     # Mission-only NPC (tên riêng trong objective)
+    ("EoM", "EoM"),  # Enemies of Man — security L1-L2 rats (EVE-Survival Gone Berserk:
+                     # Faction EoM, Imp/Fiend/Incubus/Succubus/Priest frigates, live 13-11)
     ("Escort", "MissionNPC"), ("Commander", "MissionNPC"), ("Officer", "MissionNPC"),
     ("Soldier", "MissionNPC"), ("Squad Leader", "MissionNPC"), ("Trooper", "MissionNPC"),
     ("Swarm Soldier", "MissionNPC"),

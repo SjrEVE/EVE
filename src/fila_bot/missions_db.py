@@ -50,6 +50,25 @@ GROUNDED_COMBAT_OBJECTIVES: dict[str, dict[str, str]] = {
         "level": "1",
         "location": "Hirtamon 0.9",
     },
+    "pirate intrusion": {
+        "evidence": ("EVE-Survival PirateIntrusion2gu/2se: Faction Guristas, "
+                     "Deadspace, Acceleration Gate 26km, 2 pockets, frig/cruiser "
+                     "rats (Despoiler/Saboteur/Killer jamming). Accepted live "
+                     "2026-11-13 from agent 3016830 L2, briefing link Location."),
+        "source": "https://eve-survival.org/?wakka=PirateIntrusion2gu",
+        "division": "Security",
+        "level": "2",
+        "location": "Piak 0.7",
+    },
+    "gone berserk": {
+        "evidence": ("EVE-Survival GoneBerserk1: Faction EoM, Deadspace có gate, "
+                     "3 group auto-aggro (Imp x2 + Fiend trigger), Wave 1 (3x "
+                     "Fiend) -> Wave 2 (2x Incubus). Accepted live 2026-11-13."),
+        "source": "https://eve-survival.org/?wakka=GoneBerserk1",
+        "division": "Security",
+        "level": "2",
+        "location": "Piak 0.7",
+    },
 }
 
 
@@ -138,6 +157,7 @@ def evaluate_offer(title: str | None, level: int = 1) -> tuple[str, str]:
 # generic MissionNPC are never valid automatic targets.
 COMBAT_FACTIONS = frozenset({
     "Angel", "Guristas", "Serpentis", "Blood", "Sansha", "RogueDrone", "Mercenary",
+    "EoM",  # Enemies of Man — Gone Berserk L1/L2 (EVE-Survival + live 13-11)
 })
 PROTECTED_FACTIONS = frozenset({
     "AmarrNavy", "CaldariNavy", "GallenteNavy", "MinmatarNavy", "CONCORD",
