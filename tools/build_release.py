@@ -92,16 +92,28 @@ def main() -> int:
     if dst.exists():
         shutil.rmtree(dst)
     dst.mkdir(parents=True)
-    for name in ("src", "tools", "config"):
+    for name in ("src", "tools", "tests"):
         shutil.copytree(ROOT / name, dst / name,
                         ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+
+    # A release artifact ships the public template only. Never copy the ignored,
+    # per-character profile (account/station/agent identity) into a distributable ZIP.
+    config_dst = dst / "config"
+    config_dst.mkdir()
+    for name in ("security-profile.example.json",):
+        source = ROOT / "config" / name
+        if source.is_file():
+            shutil.copy2(source, config_dst / name)
     for name in ("VERSION", "CHANGELOG.md", "BUILD_INFO.json", "README.md",
                  "LAUNCHER.bat", "AUTO.bat", "START_UI.bat", "XEM_LOG.bat",
-                 "KIEM_TRA_TRANG_THAI.bat", "CHAY_COURIER_TEST.bat",
-                 "CHAY_COURIER_THAT.bat", "MO_UI_INSPECTOR.bat"):
+                 "KIEM_TRA_TRANG_THAI.bat", "MO_UI_INSPECTOR.bat"):
         p = ROOT / name
         if p.is_file():
-            shutil.copy2(p, dst / name)
+            target = dst / name
+            shutil.copy2(p, target)
+            if p.suffix.lower() == ".bat":
+                data = target.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+                target.write_bytes(data.replace(b"\n", b"\r\n"))
     vendor_dll = ROOT / "vendor/eve-memory-reader/x64/Release/eve-memory-reader.dll"
     if vendor_dll.is_file():
         (dst / "src" / "eve-memory-reader.dll").write_bytes(vendor_dll.read_bytes())
@@ -117,7 +129,7 @@ def main() -> int:
                                  for p in sorted((dst / "src").rglob("*.py"))},
         "dll_sha256": sha256(vend_dst / "eve-memory-reader.dll"),
         "client_expected_sha256": json.loads(
-            (ROOT / "config/security-profile.kompi.json").read_text(encoding="utf-8-sig")
+            (ROOT / "config/security-profile.example.json").read_text(encoding="utf-8-sig")
         ).get("client_sha256"),
     }
     (dst / "MANIFEST.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
