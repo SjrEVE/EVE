@@ -36,7 +36,8 @@ def ok(name: str, cond: bool, msg: str = "") -> None:
 def space(**kw):
     w = {"docked": False, "location_known": True, "snapshot_valid": True,
          "connection_lost": False, "ship_health": {"shield": 1.0, "armor": 1.0, "hull": 1.0},
-         "hostiles": [{"name": "Pithi Arrogator", "faction": "Guristas", "hull": "Pithi",
+         "hostiles": [{"name": "Pithi Arrogator", "object_id": 101,
+                       "faction": "Guristas", "hull": "Pithi",
                        "priority": 1, "skip": False, "center": (1373, 649),
                        "distance": "10 km"}],
          "gates": [], "beacons": [], "empty_xy": (396, 720),
@@ -49,7 +50,9 @@ def space(**kw):
                           "med": {1: None, 2: True, 6: True}, "low": {}},
          "propulsion_slot": 1, "propulsion_observed": None,
          "defense_modules": [{"slot": 2, "observed": None}, {"slot": 6, "observed": None}],
-         "afterburner_on": None}
+         "afterburner_on": None, "target_bar_supported": True,
+         "locked_target": {"object_id": 101, "is_active": True,
+                           "texts": ["Pithi Arrogator"]}}
     w.update(kw)
     return w
 

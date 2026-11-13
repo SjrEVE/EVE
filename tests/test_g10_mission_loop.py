@@ -191,45 +191,39 @@ a_unknown = m_unknown.tick(world(docked=False, has_active_mission=True, missions
 assert a_unknown[0]["do"] == "blocked", a_unknown
 ok("fire authorization: CONCORD/Empire/unknown faction or mission -> BLOCKED, zero weapon actions", True)
 
-# ---------- 8. Combat: không spam lock/fire ----------
+# ---------- 8. Combat: no offense until the client confirms the exact itemID ----------
 m6 = SecurityMode()
-# GROUND LIVE 2026-11-12: this reader build cannot export the target bar (no
-# TargetInBar / targetHealthBars node). An unreadable bar means UNKNOWN — not
-# "locked", not "lock failed" — so the FSM must still send the one engage order
-# instead of freezing forever in the site.
 w_combat = world(docked=False, has_active_mission=True, missions=["The Blockade"],
-                 locked_target=None, target_bar_supported=False,
-                 hostiles=[{"name": "Angel Cartel Frigate", "faction": "Angel", "priority": 5,
+                 locked_target=None, target_bar_supported=True,
+                 hostiles=[{"name": "Angel Cartel Frigate", "object_id": 101,
+                            "faction": "Angel", "priority": 5,
                             "distance": 15000, "center": (500, 500)}],
                  ship_health={"shield": 1.0, "armor": 1.0, "structure": 1.0})
 a1 = m6.tick(w_combat)
-assert a1[0]["do"] == "toggle_ab" and a1[1]["do"] == "lock_target" \
-    and a1[2]["do"] == "fire_weapons" and a1[3]["do"] == "launch_drones", a1
-# tick 2: KHÔNG toggle/lock/fire lại (đã bật rồi); launch vẫn có vì world drones_out=False
-a2 = m6.tick(dict(w_combat, afterburner_on=True))
-doo = [x["do"] for x in a2]
-assert "toggle_ab" not in doo and "lock_target" not in doo \
-    and "fire_weapons" not in doo, a2
-# tick 3: drones_out=True -> KHÔNG launch nữa.
-# Ground LIVE 2026-11-12: `F` (drones attack) acts on the LOCKED target. This
-# reader build cannot export the target bar (no TargetInBar / targetHealthBars
-# node), so an unreadable bar means UNKNOWN — never "locked" and never "lock
-# failed". The FSM sends the engage order exactly ONCE after the bounded lock
-# command, and never repeats it (a repeat would be spam with no new evidence).
-a2b = m6.tick(dict(w_combat, afterburner_on=True, drones_out=True))
-doo2 = [x["do"] for x in a2b]
-assert "launch_drones" not in doo2, a2b
-assert doo2.count("engage_drones") <= 1, a2b
-a2c = m6.tick(dict(w_combat, afterburner_on=True, drones_out=True))
-assert "engage_drones" not in [x["do"] for x in a2c], a2c
-ok("combat tick 2-3: không spam toggle/lock/fire/launch (drift-proof)", True)
+k1 = [x["do"] for x in a1]
+assert "lock_target" in k1 and "launch_drones" in k1, a1
+assert "fire_weapons" not in k1 and "engage_drones" not in k1, a1
+# Tick 2: exact object ID is now active in the client's target bar.
+readback = {"object_id": 101, "is_active": True,
+            "texts": ["Angel Cartel Frigate"]}
+a2 = m6.tick(dict(w_combat, afterburner_on=True, drones_out=True,
+                  locked_target=readback))
+k2 = [x["do"] for x in a2]
+assert "lock_target" not in k2 and "fire_weapons" in k2 and "engage_drones" in k2, a2
+# Tick 3: neither weapon activation nor drone order is repeated for this identity.
+a2b = m6.tick(dict(w_combat, afterburner_on=True, drones_out=True,
+                   locked_target=readback))
+k2b = [x["do"] for x in a2b]
+assert "fire_weapons" not in k2b and "engage_drones" not in k2b, a2b
+ok("combat waits for exact itemID lock readback, then acts once", True)
 
-# ---------- 8. Quái đổi -> lock lại; hết quái -> recall drone rồi về ----------
+# ---------- 9. Quái đổi -> lock lại; hết quái -> recall drone rồi về ----------
 a3 = m6.tick(dict(w_combat, afterburner_on=True,
-                  hostiles=[{"name": "Guristas Kappa Cruiser", "faction": "Guristas", "priority": 6,
+                  hostiles=[{"name": "Guristas Kappa Cruiser", "object_id": 202,
+                             "faction": "Guristas", "priority": 6,
                              "distance": 20000, "center": (510, 505)}]))
 assert a3[0]["do"] == "lock_target", a3
-ok("đổi mục tiêu -> lock lại đúng", True)
+ok("đổi mục tiêu -> lock lại đúng object ID", True)
 
 a4 = m6.tick(dict(w_combat, afterburner_on=True, hostiles=[], drones_out=True))
 assert a4[0]["do"] == "wait", a4     # 18s wave-wait bắt đầu

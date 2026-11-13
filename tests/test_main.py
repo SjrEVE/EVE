@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -84,4 +85,38 @@ ok("bot_live_glue_input_event", len(inputs) >= 1 and inputs[-1].get("action") ==
    f"results={results[-1:]} inputs={inputs[-2:]}")
 ok("bot_state_from_eye", ex2.hp == 0.55, f"ex2.hp={ex2.hp}")
 
+
+# Production live entrypoint acquires ownership before constructing Eye/RealExecutor.
+from unittest import mock  # noqa: E402
+import fila_bot.main as main_module  # noqa: E402
+lock_calls = []
+with mock.patch.object(sys, "argv", ["fila-bot", "--mode", "live"]), \
+     mock.patch.object(main_module, "FileBus", return_value=object()), \
+     mock.patch.object(main_module, "Config", return_value=object()), \
+     mock.patch("fila_bot.cli._run_with_client_lock",
+                side_effect=lambda is_live, run: lock_calls.append(is_live) or 17):
+    live_rc = main_module.main()
+ok("main live entrypoint uses OS ownership before Eye initialization",
+   live_rc == 17 and lock_calls == [True], str((live_rc, lock_calls)))
+
+class SessionBus:
+    events = []
+    def emit(self, event, **data): self.events.append((event, data))
+class NeverTickBot:
+    ticks = 0
+    def __init__(self, *args, **kwargs): pass
+    def tick(self): self.ticks += 1
+closed_bus = SessionBus()
+closed_bus.events = []
+closed_bot = NeverTickBot()
+closed_args = SimpleNamespace(mode="live", role="solo", fit_type="default", resist_hole=None,
+                              bus_dir="test", no_killswitch=True)
+with mock.patch.object(main_module, "Bot", return_value=closed_bot), \
+     mock.patch("fila_bot.win.find_client_window", return_value=None):
+    closed_rc = main_module._run_bot(
+        closed_args, closed_bus, SimpleNamespace(tick_interval=0.01), object(), client_pid=777)
+ok("main live loop exits and emits SHUTDOWN when client window disappears",
+   closed_rc == 2 and closed_bot.ticks == 0
+   and any(e[0] == "SHUTDOWN" for e in closed_bus.events),
+   str((closed_rc, closed_bot.ticks, closed_bus.events)))
 print(f"\n=> {PASS} test PASS (mọi [FAIL] exit(1) ngay)")

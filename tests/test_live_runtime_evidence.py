@@ -8,6 +8,8 @@ from fila_bot.modes.live_security import LiveSecurityRunner
 
 e=Eye.__new__(Eye); e.root=json.loads((ROOT/'tests/fixtures/ui_tree_20261112_runtime.json').read_text(encoding='utf-8')); e._pos=e._pos_root=None
 w=LiveSecurityRunner(e,dry=True).refresh()
+assert 'capacitor_percent' in w, 'adapter drops the observed capacitor field'
+print('[PASS] capacitor observation is exported by production adapter')
 assert w['drones_in_space'] == 0, w['drones_in_space']
 assert w['drones_out'] is False
 assert w['drones_in_bay'] == 10

@@ -148,7 +148,8 @@ class SecurityMode(Mode):
         # mission-specific. Không LLM — bảng quyết định thuần Python từ
         # EVE-Survival reports + rats.py + primitives proven live.
         self._brain: Any = None
-        self._brain_title: str | None = None
+        self._brain_title: Any = None
+        self._drone_recall_sent: float | None = None
         self._engagement_modules_on: bool = False
         # Bay tới mục tiêu ngoài tầm bắn (ground live 11-12: quái 60-65 km).
         self._approach_target: str | None = None
@@ -1063,39 +1064,25 @@ class SecurityMode(Mode):
             # priority chung. Logic này đọc từ EVE-Survival reports đã ground.
             mission_tag = (world.get("active_mission_title")
                            or (world.get("missions") or [None])[0])
-            brain_target_name = None
-            brain_recall = False
+            from ..security_brain import SecurityBrain
+            level = world.get("mission_level")
+            brain_key = (mission_tag, level)
+            if self._brain is None or self._brain_title != brain_key:
+                self._brain = SecurityBrain(mission_title=mission_tag, mission_level=level)
+                self._brain_title = brain_key
             try:
-                from ..security_brain import SecurityBrain
-                if self._brain is None or self._brain_title != mission_tag:
-                    self._brain = SecurityBrain(mission_title=mission_tag,
-                                                fit={"weapon_slots":
-                                                     getattr(self, "_weapon_slots", None) or [1, 2]})
-                    self._brain_title = mission_tag
-                overview_now = world.get("overview") or []
-                drones_now = world.get("drones") or {}
-                brain_acts = self._brain.decide({
-                    "docked": False,
-                    "overview": overview_now,
-                    "ship_health": hp,
-                    "capacitor_percent": world.get("capacitor_percent"),
-                    "drones": drones_now,
-                })
-                for ba in brain_acts:
-                    if ba.get("do") == "recall_drones":
-                        brain_recall = True
-                first_lock = next((ba for ba in brain_acts if ba.get("do") == "lock"), None)
-                if first_lock:
-                    brain_target_name = first_lock.get("target")
-            except Exception:
-                brain_target_name = None  # brain lỗi → giữ priority chung (fail-safe)
-            if brain_target_name:
-                pick = next((r for r in hostiles_sorted
-                             if r.get("name") == brain_target_name), None)
-                if pick is not None:
-                    hostiles_sorted = [pick] + [r for r in hostiles_sorted if r is not pick]
+                hostiles_sorted = self._brain.rank_targets(attackable)
+            except Exception as exc:
+                self._phase = "BLOCKED"
+                self.blocked = f"Brain decision failed: {type(exc).__name__}: {exc}"
+                self._last_detail = self.blocked
+                return [{"do": "blocked", "why": self.blocked}]
             target = hostiles_sorted[0]
             t_name = target.get("name")
+            target_id = target.get("object_id")
+            valid_target_id = (isinstance(target_id, int) and not isinstance(target_id, bool)
+                               and target_id > 0)
+            target_key = f"id:{target_id}" if valid_target_id else None
             t_xy = target.get("center")
 
             acts: list[dict[str, Any]] = []
@@ -1137,17 +1124,28 @@ class SecurityMode(Mode):
                                  "why": "Bật Afterburner (lần đầu engagement này)"})
                 self._engagement_modules_on = True
 
+            if not valid_target_id:
+                self._phase = "BLOCKED"
+                self.blocked = (f"Mục tiêu {t_name or '<unknown>'} thiếu client object ID; "
+                                "không lock/approach/fire bằng tên hoặc tọa độ")
+                self._last_detail = self.blocked
+                acts.append({"do": "blocked", "why": self.blocked})
+                return acts
+
             # Ground LIVE 2026-11-12 14:26 (Piit, 'The Guristas Spies'): bot sat at
             # the site with speed 0 m/s while the rats hovered at 60-65 km. It
             # locked, fired and launched drones and then did nothing: no step
             # closes the distance, so nothing ever got in range. A Gila with RLML
             # fights around 20-25 km, so the FSM must fly to the target instead of
             # waiting for the rats to come to it.
-            dist_m = _distance_m(target.get("distance"))
+            raw_distance = target.get("distance")
+            dist_m = (float(raw_distance) if isinstance(raw_distance, (int, float))
+                      and not isinstance(raw_distance, bool) else _distance_m(raw_distance))
             self._update_approach_progress(dist_m)
             if dist_m is not None and dist_m > ENGAGE_RANGE_M:
-                cmd = self._closing_command(t_xy, target.get("name"), dist_m)
+                cmd = self._closing_command(t_xy, t_name, dist_m)
                 if cmd is not None:
+                    cmd.update(target_id=target_id, target_name=t_name)
                     acts.append(cmd)
             elif dist_m is not None and dist_m <= ENGAGE_RANGE_M:
                 self._approach_target = None
@@ -1162,112 +1160,128 @@ class SecurityMode(Mode):
             # bar; chỉ coi là đã lock khi client báo ActiveTarget.
             locked_now = world.get("locked_target")
             bar_supported = world.get("target_bar_supported")
-            lock_ok = bool(locked_now) and (
-                not t_name
-                or str(t_name).strip().casefold() in
-                " ".join(str(x) for x in (locked_now.get("texts") or [])).casefold())
-            if bar_supported is not True:
-                # Eye không đọc được target bar: "chưa lock" là KHÔNG BIẾT, không
-                # phải "lock thất bại". Giữ hành vi cũ (một lệnh lock mỗi mục tiêu)
-                # và KHÔNG block — nhưng cũng không được coi là đã lock.
-                if t_name != self._locked_target:
-                    acts.append({"do": "lock_target", "at": t_xy,
-                                 "why": f"Khóa mục tiêu {t_name} "
-                                        f"(Priority {target.get('priority')})"})
-                    self._locked_target = t_name
+            if locked_now:
+                lock_ok = (locked_now.get("object_id") == target_id
+                           and locked_now.get("is_active") is True)
+            else:
                 lock_ok = False
-            elif not lock_ok:
+            if lock_ok:
+                self._lock_attempts = 0
+                self._lock_sent = None
+            else:
                 now_lk = self.clock()
-                if (self._locked_target != t_name
-                        or self._lock_sent is None
+                if self._locked_target != target_key:
+                    self._lock_attempts = 0
+                    self._lock_sent = None
+                if (self._lock_sent is None
                         or now_lk - self._lock_sent >= LOCK_RETRY_S):
                     if self._lock_attempts >= LOCK_MAX_ATTEMPTS:
                         self._phase = "BLOCKED"
-                        self.blocked = (
-                            f"Không lock được {t_name} sau {LOCK_MAX_ATTEMPTS} lần "
-                            "(target bar của client không có ActiveTarget)")
+                        if bar_supported is True:
+                            self.blocked = (
+                                f"Không lock được {t_name} sau {LOCK_MAX_ATTEMPTS} lần "
+                                "(target bar không xác nhận đúng object ID đang active)")
+                        else:
+                            self.blocked = (
+                                f"Không xác minh được lock {t_name} sau "
+                                f"{LOCK_MAX_ATTEMPTS} lần (target bar unreadable/unsupported)")
                         self._last_detail = self.blocked
                         return [{"do": "blocked", "why": self.blocked}]
                     self._lock_attempts += 1
                     self._lock_sent = now_lk
-                    self._locked_target = t_name
+                    self._locked_target = target_key
+                    why = (f"Khóa mục tiêu {t_name} "
+                           f"(lần {self._lock_attempts}/{LOCK_MAX_ATTEMPTS}, "
+                           f"Priority {target.get('priority')})")
+                    if bar_supported is not True:
+                        why += " — target bar chưa đọc được, không cho phép tấn công"
                     acts.append({"do": "lock_target", "at": t_xy,
-                                 "why": f"Khóa mục tiêu {t_name} "
-                                        f"(lần {self._lock_attempts}/{LOCK_MAX_ATTEMPTS}, "
-                                        f"Priority {target.get('priority')})"})
+                                 "target_id": target_id, "target_name": t_name,
+                                 "why": why})
                 elif not world.get("drones_out"):
-                    # Chưa lock được thì KHÔNG gửi F (drone sẽ cắn hụt).
+                    # Chưa xác minh exact ID/ActiveTarget thì KHÔNG gửi F.
                     self._last_detail = (f"Chờ lock {t_name} — chưa gửi lệnh drone "
                                          f"({int(now_lk - self._lock_sent)}/{int(LOCK_RETRY_S)}s)")
-            else:
-                self._lock_attempts = 0
-                self._lock_sent = None
 
-            # Vũ khí: nếu HUD đọc được thì chỉ bấm slot đang OFF; nếu HUD không
-            # xuất trạng thái (bình thường khi ở space) thì bấm ĐÚNG MỘT LẦN cho
-            # engagement này — KHÔNG bấm lại, vì bấm lại là tắt giàn.
-            weapons_obs = world.get("weapons_active")
-            now_w = self.clock()
-            if weapons_obs is True:
-                self._weapons_firing = True
-            elif weapons_obs is None:
-                # Ground LIVE 2026-11-12: `ramp_active`/`isActive` is not exported
-                # in space, so the state cannot be read back. "Once per mission"
-                # was the fix for not toggling a running launcher OFF — but it is
-                # also wrong: a launcher that runs dry or is reloaded ends up
-                # inactive with the mission still going, and the bot never presses
-                # it again. Bounded re-arm is the honest compromise: press again
-                # only after WEAPON_REARM_S of continuous fight, at most
-                # WEAPON_REARM_MAX extra presses, and only while a hostile is
-                # still primary (i.e. the fight is genuinely still on).
-                if first_of_engagement:
-                    acts.append({"do": "fire_weapons",
-                                 "why": "Kích hoạt giàn tên lửa (một lần/engagement)"})
+
+
+            # Vũ khí chỉ được kích hoạt khi client xác nhận đúng target object ID.
+            # HUD không đọc được trạng thái module không làm suy yếu điều kiện lock.
+            if lock_ok:
+                weapons_obs = world.get("weapons_active")
+                now_w = self.clock()
+                if weapons_obs is True:
                     self._weapons_firing = True
-                elif (not self._hostiles_gone
-                        and self._weapons_rearms < WEAPON_REARM_MAX
-                        and self._weapons_sent is not None
-                        and now_w - self._weapons_sent >= WEAPON_REARM_S):
-                    self._weapons_rearms += 1
-                    self._weapons_sent = now_w
-                    acts.append({"do": "fire_weapons",
-                                 "why": (f"Bật lại giàn (lần {self._weapons_rearms}/"
-                                         f"{WEAPON_REARM_MAX}) — HUD không cho đọc trạng thái")})
+                elif weapons_obs is None:
+                    # Ground LIVE 2026-11-12: `ramp_active`/`isActive` is not exported
+                    # in space, so the state cannot be read back. "Once per mission"
+                    # was the fix for not toggling a running launcher OFF — but it is
+                    # also wrong: a launcher that runs dry or is reloaded ends up
+                    # inactive with the mission still going, and the bot never presses
+                    # it again. Bounded re-arm is the honest compromise: press again
+                    # only after WEAPON_REARM_S of continuous fight, at most
+                    # WEAPON_REARM_MAX extra presses, and only while a hostile is
+                    # still primary (i.e. the fight is genuinely still on).
+                    if first_of_engagement or (not self._weapons_firing
+                                               and self._weapons_sent is None
+                                               and self._weapons_rearms == 0):
+                        acts.append({"do": "fire_weapons",
+                                     "why": "Kích hoạt giàn tên lửa (một lần/engagement)"})
+                        self._weapons_firing = True
+                    elif (not self._hostiles_gone
+                            and self._weapons_rearms < WEAPON_REARM_MAX
+                            and self._weapons_sent is not None
+                            and now_w - self._weapons_sent >= WEAPON_REARM_S):
+                        self._weapons_rearms += 1
+                        self._weapons_sent = now_w
+                        acts.append({"do": "fire_weapons",
+                                     "why": (f"Bật lại giàn (lần {self._weapons_rearms}/"
+                                             f"{WEAPON_REARM_MAX}) — HUD không cho đọc trạng thái")})
+                    else:
+                        self._last_detail = ("Giàn đã kích hoạt — không bấm lại (HUD không "
+                                             f"đọc được trạng thái, re-arm {self._weapons_rearms}"
+                                             f"/{WEAPON_REARM_MAX})")
                 else:
-                    self._last_detail = ("Giàn đã kích hoạt — không bấm lại (HUD không "
-                                         f"đọc được trạng thái, re-arm {self._weapons_rearms}"
-                                         f"/{WEAPON_REARM_MAX})")
-            else:
-                if (self._weapons_sent is None
-                        or now_w - self._weapons_sent >= 8.0):
-                    acts.append({"do": "fire_weapons",
-                                 "why": "Slot vũ khí observed chưa active — bấm lại"})
-                    self._weapons_sent = now_w
-                    self._weapons_firing = True
+                    if (self._weapons_sent is None
+                            or now_w - self._weapons_sent >= 8.0):
+                        acts.append({"do": "fire_weapons",
+                                     "why": "Slot vũ khí observed chưa active — bấm lại"})
+                        self._weapons_sent = now_w
+                        self._weapons_firing = True
+
+            # Drone policy is based on the selected target, not the farthest rat.
+            # Wait for count readback and bound recall retries; never launch and
+            # recall in the same tick.
+            drone_allowed = dist_m is not None and dist_m <= ENGAGE_RANGE_M
+            if world.get("drones_out") is False:
+                self._drone_recall_sent = None
+            if not drone_allowed and world.get("drones_out") is True:
+                if (self._drone_recall_sent is None
+                        or self.clock() - self._drone_recall_sent >= 15.0):
+                    self._drone_recall_sent = self.clock()
+                    acts.append({"do": "recall_drones",
+                                 "why": "Target outside verified drone engagement range"})
 
             # Thả Drone và tấn công — CHỈ khi có target ĐÃ LOCK (F = đánh target
             # đang lock; không lock thì drone bay không).
-            if not world.get("drones_out"):
+            if not drone_allowed:
+                pass
+            elif not world.get("drones_out"):
                 acts.append({"do": "launch_drones", "why": "Phóng 2 Medium Drone"})
                 self._drones_wait_lock = True
-            elif self._drones_wait_lock:
-                # Ground LIVE 2026-11-12: `F` (drones attack) acts on the LOCKED
-                # target. This reader build exports no target bar, so the lock
-                # itself is UNVERIFIED — say that out loud. But the historical
-                # behaviour (launch then one F) is what actually cleared pockets
-                # live, so F is sent EXACTLY ONCE per target and never repeated:
-                # a repeat carries no new evidence and only risks re-targeting.
-                if lock_ok or self._drones_engaged_for != t_name:
+            elif self._drones_wait_lock and lock_ok:
+                if lock_ok or self._drones_engaged_for != target_key:
                     acts.append({"do": "engage_drones",
-                                 "why": (f"Drone cắn {t_name} "
-                                         + ("(đã lock)" if lock_ok
-                                            else "(lock KHÔNG đọc lại được — gửi F 1 lần)"))})
-                    self._drones_engaged_for = t_name
+                                 "why": f"Drone cắn {t_name} (object ID đã xác minh)"})
+                    self._drones_engaged_for = target_key
                     self._drones_wait_lock = False
                 else:
-                    self._last_detail = (f"Đã gửi F cho {t_name} — không gửi lại "
-                                         "(client không cho đọc lock)")
+                    self._last_detail = (f"Đã gửi lệnh drone cho {t_name} — không gửi lại "
+                                         "cùng object ID")
 
+            if not lock_ok:
+                acts = [a for a in acts if a.get("do") not in
+                        ("fire_weapons", "engage_drones")]
             return acts
 
         # Không còn quái trong overview

@@ -20,8 +20,8 @@ def ok(n, cond):
     print(f"[PASS] {n}")
 
 
-def brain(title="Gone Berserk", **kw):
-    return SecurityBrain(mission_title=title, **kw)
+def brain(title="Gone Berserk", level=1, **kw):
+    return SecurityBrain(mission_title=title, mission_level=level, **kw)
 
 
 HP_OK = {"shield": 1.0, "armor": 1.0, "structure": 1.0}
@@ -58,7 +58,7 @@ acts = b.decide(world([
 ok("cap<25% → cap_save", acts and acts[0]["do"] == "cap_save")
 
 # --- 4. pocket sạch + gate xa → approach gate (KHÔNG bấm gate mù) ---
-b = brain("Pirate Intrusion")
+b = brain("Pirate Intrusion", level=2)
 acts = b.decide(world([
     {"Name": "Acceleration Gate", "Distance": "26 km", "center": (2, 2)},
 ]))
@@ -72,7 +72,7 @@ acts = b.decide(world([
 ok("gate trong tầm → activate_gate", acts and acts[0]["do"] == "activate_gate")
 
 # --- 6. pocket chưa clear (còn quái) → KHÔNG bấm gate dù gate có mặt ---
-b = brain("Pirate Intrusion")
+b = brain("Pirate Intrusion", level=2)
 acts = b.decide(world([
     {"Name": "Acceleration Gate", "Distance": "0 m", "center": (2, 2)},
     {"Name": "Guristas Despoiler", "Distance": "20 km", "center": (3, 3)},

@@ -67,7 +67,9 @@ Không có "chỉ huy ngoài" — KHÔNG LLM, KHÔNG cloud, KHÔNG subscription.
 4. Ưu tiên Singularity + acc rỗng. Khi SiSi khoá lịch: chủ máy quyết định chạy TQ bằng
    **acc alpha mới** (không dùng acc chính) — rủi ro EULA do chủ máy chấp nhận.
 
-## 7. Mission runner (mission.py + mission_cli.py)
+## 7. Legacy mission runner (not exposed by the Abyss-only UI/launcher)
+
+> Security/distribution mission code remains in the repository for compatibility. The normal operator flow is Abyss-only; these legacy commands are outside the current test-run path.
 
 Chạy mission security **không** dùng chung vòng abyss: không timer 20 phút, được warp out,
 có station để dock/turn-in.

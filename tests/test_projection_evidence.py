@@ -7,7 +7,11 @@ sys.path.insert(0, str(ROOT / 'src'))
 from fila_bot.eye import Eye
 
 e = Eye.__new__(Eye)
-e.root = json.loads((ROOT / 'ui_dump_space.json').read_text(encoding='utf-8'))
+SPACE_DUMP = ROOT / "ui_dump_space.json"
+if not SPACE_DUMP.is_file():
+    print("[SKIP] local-only EVE projection dump is not included in portable artifacts")
+    raise SystemExit(0)
+e.root = json.loads(SPACE_DUMP.read_text(encoding='utf-8'))
 e._pos = e._pos_root = None
 rows = e.space_brackets()
 assert rows

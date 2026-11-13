@@ -32,6 +32,10 @@ from fila_bot.missions_db import evaluate_offer  # noqa: E402
 from fila_bot.modes.security import SecurityMode  # noqa: E402
 
 PASS = 0
+DUMP_LOADING = ROOT / "dumps/g8_dialog_160238.json"
+if not DUMP_LOADING.is_file():
+    print("[SKIP] local-only EVE loading dump is not included in portable artifacts")
+    raise SystemExit(0)
 
 
 def ok(name: str, cond: bool, msg: str = "") -> None:
@@ -102,7 +106,6 @@ ok("fire policy: mission+faction must be known; Empire/CONCORD/unknown fail clos
 
 # ---------- 2. AgentEye.loaded(): dump THẬT đã load vs đang load ----------
 FIX_LOAD = ROOT / "tests/fixtures/ui_tree_agent_offer.json"
-DUMP_LOADING = ROOT / "dumps/g8_dialog_160238.json"
 
 ae_ok = AgentEye(eye_from(FIX_LOAD))
 assert ae_ok.loaded() is True

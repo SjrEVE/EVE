@@ -26,7 +26,8 @@ def build_supervisor(mode: str, sim: bool = True, dry: bool = True, dll: str | N
                      runs_dir: str | Path | None = None, *,
                      filament: str | None = None, max_runs: int | None = None,
                      max_missions: int | None = None, engine: str = "fsm",
-                     allow_unknown_sec: bool = False, profile: Any = None) -> Any:
+                     allow_unknown_sec: bool = False, profile: Any = None,
+                     fit_type: str = "default", resist_hole: str | None = None) -> Any:
     """Tao Supervisor cho 1 mode. Tham so duoc truyen xuong mode (khong hard-code).
 
     filament/max_runs  -> AbyssMode (truoc day CLI in ra filament nhung mode dung default)
@@ -129,7 +130,9 @@ def build_supervisor(mode: str, sim: bool = True, dry: bool = True, dll: str | N
         ex = RealExecutor(Eye(dll_path=dll), input_dry=dry, bus=bus)
         execute = lambda acts: ex.process_actions()
         refresh = ex.refresh_from_eye
-    mode_obj = AbyssMode(Bot(bus, Config(), ex), filament=filament or "Tranquil Exotic Filament",
+    mode_obj = AbyssMode(Bot(bus, Config(), ex, fit_type=fit_type,
+                             resist_hole=resist_hole),
+                         filament=filament or "Tranquil Exotic Filament",
                          max_runs=max_runs, engine=engine)
     return Supervisor(mode_obj, execute=execute, refresh=refresh,
                       release_all=lambda: inp.release_all(dry_run=sim or dry),
@@ -176,6 +179,12 @@ class UiModel:
         if self.sup is not None:
             self.sup.shutdown()
         self.error, self.phase, self.status = None, None, {}
+        if not self.sim:
+            self.error = ("GUI live reader/input is disabled until this path uses the per-client "
+                          "ownership gate. Use the fila_bot.cli entrypoint for live access.")
+            self.state = "IDLE"
+            self._log("FATAL: " + self.error)
+            return
         try:
             self.sup = self.factory(self.mode, sim=self.sim, dry=self.dry,
                                     max_hours=self.max_hours, filament=self.filament,

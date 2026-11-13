@@ -80,11 +80,27 @@ class Bot:
         from .combat_brain import CombatBrain  # P1-1: rats/rooms vào vòng tick
         # fit_type="default" = SIM/test (orbit 10km cố định, không tactic);
         # LIVE truyền fit theo tàu (vd "ab_cruiser", "mwd_shield_drone") + lỗ kháng
+        # fit registry (fit_map.FITS) khi tên fit được khai báo — vd "ab_punisher".
+        self.fit: dict[str, Any] | None = None
+        try:
+            from .fit_map import FITS
+            self.fit = FITS.get(fit_type)
+        except ImportError:      # fit_map không có → giữ hành vi cũ
+            self.fit = None
+        # fit không drone (vd Punisher) → brain phải TẮT nhánh drone
+        effective_drones = has_drones if self.fit is None else bool(self.fit["has_drones"])
         self.combat = CombatBrain(fit_type=fit_type, resist_hole=resist_hole,
-                                  has_drones=has_drones)
+                                  has_drones=effective_drones)
         # P1-2: trio role (tank/dps/logi) — solo = không dùng
         from .trio import TrioRole
         self.trio = TrioRole(role) if role in ("tank", "dps", "logi") else None
+        # fleet state: HP đồng đội đọc từ báo cáo, KHÔNG bịa từ HP của mình
+        from .fleet import FleetState
+        self.fleet: FleetState | None = (FleetState(role=role)
+                                         if role in ("tank", "dps", "logi") else None)
+        # fit module controller — chỉ active khi fit có registry
+        from .fit_map import FitController
+        self.fit_ctl = FitController(self.fit) if self.fit else None
         # P1-3: drone manager chạy mỗi tick (chỉ advisory khi chưa ground node)
         from .drone import DroneManager
         self.drones = DroneManager()
@@ -369,28 +385,53 @@ class Bot:
 
         # 3c) P0-6: KHÔNG vào room mới nếu không đủ thời gian clear + đi gate
         room_now = getattr(self.ex, "room", self._room_seen)
-        if self.abby_started is not None and room_now != self._room_seen:
-            left = 1200 - (time.time() - self.abby_started)
+        if room_now != self._room_seen:
             self._room_seen = room_now
-            if hasattr(self.trio, "new_room") and self.trio is not None:
+            # Reset per-room state theo BẰNG CHỨNG đổi room — không phụ thuộc
+            # abby_started (trước đây reset chỉ chạy khi timer đã bật, tức là
+            # gần như không bao giờ; reps_open "được reset" chỉ nhờ bug HP).
+            if self.trio is not None and hasattr(self.trio, "new_room"):
                 self.trio.new_room()
-            if left < self.cfg.min_room_left and self.ex.phase in IN_ABYSS:
-                self.bus.emit("MAYDAY", reason=f"vào room {room_now} khi còn {int(left)}s "
-                              f"< {self.cfg.min_room_left}s — không đủ thời gian, thoát an toàn")
-                self.safe_exit(reason=f"timer {int(left)}s không đủ cho room mới")
+            if self.fit_ctl is not None:
+                self.fit_ctl._engagement = f"{room_now}"   # room mới = engagement mới
+            if self.abby_started is not None:
+                left = 1200 - (time.time() - self.abby_started)
+                if left < self.cfg.min_room_left and self.ex.phase in IN_ABYSS:
+                    self.bus.emit("MAYDAY", reason=f"vào room {room_now} khi còn {int(left)}s "
+                                  f"< {self.cfg.min_room_left}s — không đủ thời gian, thoát an toàn")
+                    self.safe_exit(reason=f"timer {int(left)}s không đủ cho room mới")
 
         # 3d) P1-2: trio role tick (tank/dps/logi) — chỉ advisory + action đã ground
         if self.trio is not None and str(self.ex.phase).endswith("_FIGHT"):
             texts = self.ex.overview_texts() if hasattr(self.ex, "overview_texts") else []
+            # tank_hp PHẢI từ báo cáo fleet (tank tự publish); không có → None
+            # (UNKNOWN). Bug cũ gán HP của chính bot → logi rep sai người.
+            if self.fleet is not None:
+                self.fleet.publish(hp=getattr(self.ex, "hp", 1.0),
+                                   cap=getattr(self.ex, "cap", None),
+                                   room=getattr(self.ex, "room", None),
+                                   phase=str(self.ex.phase))
+            tank_hp = self.fleet.tank_hp() if self.fleet is not None else None
             st = {
                 "hp": getattr(self.ex, "hp", 1.0), "cap": getattr(self.ex, "cap", 1.0),
                 "room_entry": True, "moved_this_room": True,
                 "kikimora_count": sum("kikimora" in t.lower() for t in texts),
-                "tank_hp": getattr(self.ex, "hp", 1.0),
+                "tank_hp": tank_hp,
                 "dist_to_tank_km": 0.0, "current_target": None, "want_target": None,
             }
             for act in self.trio.tick(st):
                 self.bus.emit("TRIO", role=self.trio.role, **act)
+
+        # 3d-bis) fit module control — bật/giữ module theo fit_map + read-back HUD
+        if self.fit_ctl is not None and str(self.ex.phase).endswith("_FIGHT"):
+            world_mod = getattr(self.ex, "module_state_world", None)
+            world_val: Any = world_mod() if callable(world_mod) else world_mod
+            world: dict[str, Any] = world_val if isinstance(world_val, dict) else {}
+            for f_act in self.fit_ctl.tick(world,
+                                           hp=getattr(self.ex, "hp", 1.0),
+                                           engagement=f"{getattr(self.ex, 'room', 0)}"):
+                self.ex.actions.append(("activate", f_act["slot"], f_act["rack"]))
+                self.bus.emit("FITMOD", **f_act)
 
         # 3e) P1-3: drone manager — update mỗi tick, advisory (node drone chưa ground)
         # merge 2026-11-10: thêm tín hiệu recall chủ động (mặc định tắt tới khi eye ground được)

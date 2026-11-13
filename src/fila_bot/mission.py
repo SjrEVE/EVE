@@ -56,6 +56,14 @@ def _after_alt(text: str, marker: str) -> str | None:
     return val or None
 
 
+# Moon/planet/station token: 'Niyabainen VIII - Moon 6', 'Autaris I',
+# 'Amarr VIII (Oris) - ...', 'Jita IV - Moon 1 - Yulai'.
+# Tên HỆ thì không có số Roman đuôi/hậu tố celestial (ground live 14-11).
+_LOOKS_LIKE_CELESTIAL = re.compile(
+    r"(\b(moon|planet|station|belt|star)\b|\b[IVXivx]+\s*(\(|$)|\b[IVXivx]+\b\s*-\s*\w)",
+    re.I)
+
+
 @dataclass
 class MissionState:
     phase: str = "UNKNOWN"
@@ -111,7 +119,17 @@ class MissionEye:
 
     # ---------------- dữ liệu vị trí ----------------
     def location(self) -> dict[str, Any]:
-        """Station hiện tại + system + security status (ground 2026-11-09)."""
+        """Station hiện tại + system + security status (ground 2026-11-09).
+
+        Ground LIVE 2026-11-14 (in space, client thật): `nearestLocationInfo`
+        là CELESTIAL GẦN NHẤT (`alt= Nearest >Alikara</url>` = hệ khi tàu bay
+        gần sao đó), KHÔNG phải "Current Solar System" như lúc docked. Luật:
+        - Station: alt= Current Station (docked) — in space thì None.
+        - System: alt= Current Solar System (docked); in space dùng alt=
+          Nearest KHI nó là một solar system (không có token moon/planet/station
+          — ground: docked dump ghi 'Alikara' cho hệ, in-space dump ghi
+          'Niyabainen VIII - Moon 6' cho moon). Không chắc → None, đừng bịa.
+        """
         out: dict[str, Any] = {"station": None, "system": None, "security": None}
         panel = self._find_type("InfoPanelLocationInfo")
         if panel:
@@ -119,6 +137,10 @@ class MissionEye:
                 if name == "nearestLocationInfo":
                     out["station"] = out["station"] or _after_alt(txt, "Current Station")
                     out["system"] = out["system"] or _after_alt(txt, "Current Solar System")
+                    if out["system"] is None:
+                        near = _after_alt(txt, "Nearest")
+                        if near and not _LOOKS_LIKE_CELESTIAL.search(near):
+                            out["system"] = near
                 elif name == "headerLabelSecStatus":
                     m = re.search(r">\s*([0-9]+(?:\.[0-9]+)?)\s*<", txt)
                     if m:
@@ -156,8 +178,11 @@ class MissionEye:
             mn = re.search(r"alt=\s*Next System in Route\s*>([^<]+)<", s)
             if mn and out["next_system"] is None:
                 out["next_system"] = mn.group(1).strip()
+            md = re.search(r"alt=\s*Current Destination\s*>([^<]+)<", s)
+            if md and out["destination"] is None:
+                out["destination"] = md.group(1).strip()
         if out["jumps"] == 1 and out["next_system"]:
-            out["destination"] = out["next_system"]
+            out["destination"] = out["destination"] or out["next_system"]
         return out
 
     # ---------------- agent / mission ----------------
@@ -258,7 +283,8 @@ class MissionEye:
                 continue
             is_npc = c.get("faction") is not None or c.get("hull") is not None
             if is_npc:
-                out.append({"name": name, "faction": c.get("faction"),
+                out.append({"name": name, "object_id": e.get("object_id"),
+                            "faction": c.get("faction"),
                             "hull": c.get("hull"), "priority": c.get("priority"),
                             "skip": c.get("skip"), "center": e.get("center"),
                             "distance": e.get("Distance")})

@@ -12,7 +12,7 @@ Primary user is Boss, an experienced EVE Online player and operator of fila-bot.
 
 ## Product Purpose
 
-fila-bot controls EVE Online automation modes including Abyss, Security missions, and Distribution/courier. The UI should let the operator configure a run, start and supervise it, understand the current phase and any block/error, and stop it safely.
+fila-bot's standard operator GUI and launchers focus on Abyssal Deadspace only. Security mission and Distribution/courier implementations remain in the repository as legacy code, but are not offered by the normal UI or packaged launcher. The operator surface configures an Abyss run, monitors its actual phase and any block/error, and stops it safely.
 
 ## Positioning
 
@@ -24,8 +24,8 @@ The operator has the EVE client and fila-bot on a Windows desktop. The UI is use
 
 ## Capabilities and Constraints
 
-- Modes present in code: Abyss, Security mission, and Distribution.
-- Existing run options include SIM, DRY, maximum session hours, maximum missions/runs, filament, and engine selection where applicable.
+- Modes present in code: Abyss, Security mission, and Distribution; the standard UI/launcher exposes Abyss only, and the other implementations are legacy.
+- The public GUI exposes SIM/DRY, maximum session hours, maximum Abyss runs, filament, and the Abyss engine choice (FSM/BT). Legacy CLI mission modes remain internal.
 - Existing controls include Start, Pause/Resume, safe Stop, and E-STOP. Their semantics must remain truthful: SIM does not connect to EVE; DRY reads the client without sending input; disabling both can send real clicks/keys and requires explicit confirmation.
 - The user selected phase/status/block reason, run limits, and append-only action history as important to keep visible. The user asked for additional research before deciding how to expose the SIM/DRY/E-STOP controls; do not silently remove or weaken their behavior.
 - Mission/ship facts must not be fabricated. A blocked/unknown state must be visible and actionable.

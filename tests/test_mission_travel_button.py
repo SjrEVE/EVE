@@ -50,6 +50,14 @@ def load(p: str) -> dict:
     return json.loads((ROOT / p).read_text(encoding="utf-8"))
 
 
+_REQUIRED_LOCAL_DUMPS = ("dumps/g11_docked_fresh.json", "dumps/g10_turnin_dialog.json",
+                         "dumps/g8_opportunities_open.json")
+_missing_local_dumps = [path for path in _REQUIRED_LOCAL_DUMPS if not (ROOT / path).is_file()]
+if _missing_local_dumps:
+    print("[SKIP] local-only EVE grounding dumps are not included in portable artifacts")
+    raise SystemExit(0)
+
+
 # ---- 1. Nút Location ground từ dump TQ thật --------------------------------
 g11 = eye_from(load("dumps/g11_docked_fresh.json"))
 b11 = g11.mission_location_button()

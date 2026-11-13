@@ -30,7 +30,8 @@ def battle(distance, **kw):
     w = {"docked": False, "location_known": True, "snapshot_valid": True,
          "connection_lost": False,
          "ship_health": {"shield": 1.0, "armor": 1.0, "structure": 1.0},
-         "hostiles": [{"name": "Pithi Invader", "faction": "Guristas", "hull": "Pithi",
+         "hostiles": [{"name": "Pithi Invader", "object_id": 101,
+                       "faction": "Guristas", "hull": "Pithi",
                        "priority": 1, "skip": False, "center": (1365, 457),
                        "distance": distance}],
          "missions": ["The Guristas Spies"], "active_mission_title": "The Guristas Spies",
@@ -38,7 +39,10 @@ def battle(distance, **kw):
          "has_active_mission": True, "mission_panel_observed": True,
          "gates": [], "beacons": [], "drones_out": True, "afterburner_on": True,
          "weapons_active": None, "modules_observed": True,
-         "propulsion_slot": 1, "propulsion_observed": None, "defense_modules": []}
+         "propulsion_slot": 1, "propulsion_observed": None, "defense_modules": [],
+         "target_bar_supported": True,
+         "locked_target": {"object_id": 101, "is_active": True,
+                           "texts": ["Pithi Invader"]}}
     w.update(kw)
     return w
 
@@ -47,11 +51,19 @@ clock = {"t": 500.0}
 m = SecurityMode(clock=lambda: clock["t"])
 acts = m.tick(battle("65 km"))
 kinds = [a["do"] for a in acts]
-ok("target at 65 km is flown to, not waited on",
+ok("target beyond weapon range is approached before offense",
    "close_distance" in kinds and acts[[a["do"] for a in acts].index("close_distance")]["at"]
    == (1365, 457), str(acts))
-ok("closing happens even though the ship was told to fire",
-   "fire_weapons" in kinds, str(kinds))
+close_action = next(a for a in acts if a["do"] == "close_distance")
+ok("distance-closing action carries the selected itemID",
+   close_action.get("target_id") == 101
+   and close_action.get("target_name") == "Pithi Invader", str(close_action))
+m_unverified = SecurityMode(clock=lambda: clock["t"])
+unverified_kinds = [a["do"] for a in m_unverified.tick(
+    battle("12 km", locked_target=None))]
+ok("unverified target lock withholds weapons and drone engagement",
+   "fire_weapons" not in unverified_kinds
+   and "engage_drones" not in unverified_kinds, str(unverified_kinds))
 
 # Same distance, still flying: no repeat command inside the stall window.
 clock["t"] += 5.0
@@ -65,8 +77,12 @@ ok("stalled approach is re-issued", "close_distance" in kinds3, str(kinds3))
 
 # Inside engagement range -> no flying, keep shooting.
 m2 = SecurityMode(clock=lambda: clock["t"])
-kinds = [a["do"] for a in m2.tick(battle("12 km"))]
-ok("target inside range is not approached", "close_distance" not in kinds, str(kinds))
+kinds = [a["do"] for a in m2.tick(battle(
+    "12 km", target_bar_supported=True,
+    locked_target={"object_id": 101, "is_active": True,
+                   "texts": ["Pithi Invader"]}))]
+ok("matching active target inside range enables weapons, without approach",
+   "close_distance" not in kinds and "fire_weapons" in kinds, str(kinds))
 
 # Never closes -> blocks with the real distance, bounded attempts.
 m3 = SecurityMode(clock=lambda: clock["t"])

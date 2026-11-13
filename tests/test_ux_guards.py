@@ -14,6 +14,8 @@ from __future__ import annotations
 import sys
 import tempfile
 import time
+import queue
+from unittest import mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -189,5 +191,32 @@ m = UiModel(factory=bad_factory, tick=0.01, runs_dir=TMP)
 m.start()
 assert m.error and "boom that su" in m.error, m.error
 ok("UiModel: TypeError that -> hien FATAL, khong retry mu")
+
+# Live runner must terminate and release ownership when its acquired client window vanishes.
+class WatchSup:
+    mode = StubMode("AGENT")
+    state = "IDLE"
+    ticks = 0
+    evt_q = queue.Queue()
+    def start_thread(self, tick_interval): self.started = True
+    def send(self, event): self.event = event
+    def shutdown(self): self.stopped = True
+
+watch_sup = WatchSup()
+with mock.patch.object(cli, "find_client_window", return_value=None) as find_window, \
+     mock.patch.object(cli.time, "sleep", return_value=None):
+    rc_closed = cli._watch(watch_sup, abyss=False, client_pid=4242)
+assert rc_closed == 2 and watch_sup.stopped and not getattr(watch_sup, "started", False), \
+    (rc_closed, getattr(watch_sup, "stopped", False), getattr(watch_sup, "started", False))
+find_window.assert_called_with(pid=4242)
+ok("_watch refuses to start when acquired EVE window is already gone")
+
+watch_mid_close = WatchSup()
+with mock.patch.object(cli, "find_client_window", side_effect=[{"pid": 4242}, None]) as find_window, \
+     mock.patch.object(cli.time, "sleep", return_value=None):
+    rc_mid_close = cli._watch(watch_mid_close, abyss=False, client_pid=4242)
+assert rc_mid_close == 2 and watch_mid_close.stopped and watch_mid_close.started
+assert find_window.call_count == 2
+ok("_watch shuts down the worker when EVE window disappears mid-session")
 
 print("\nTat ca guard UX/mechanic: PASS")

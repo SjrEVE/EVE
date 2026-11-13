@@ -134,7 +134,8 @@ class SecurityE2ESim:
     TITLE = "The Blockade"          # combat mission co trong catalog da ground
     AGENT = {"name": "Jukosoni Kauniki", "level": 1, "division": "Security",
              "available": True, "chat_xy": (640, 400)}
-    HOSTILE = {"name": "Guristas Frigate", "faction": "Guristas", "priority": 5,
+    HOSTILE = {"name": "Guristas Frigate", "object_id": 30000142,
+               "faction": "Guristas", "priority": 5,
                "distance": 15000, "center": (500, 500), "skip": False}
 
     def __init__(self) -> None:
@@ -143,6 +144,7 @@ class SecurityE2ESim:
         self.fight_ticks = 0
         self.pending_ticks = 0
         self.trace: list[str] = []
+        self._locked_target_id: int | None = None
 
     def clock(self) -> float:
         return self._vt
@@ -155,6 +157,9 @@ class SecurityE2ESim:
             if self.fight_ticks >= 3:
                 self.stage, self._drones_out = "SITE_CLEAR", True
         docked = self.stage not in ("SPACE_BEACON", "SITE_FIGHT", "SITE_CLEAR")
+        locked_target = ({"object_id": self._locked_target_id, "is_active": True,
+                          "texts": [self.HOSTILE["name"]]}
+                         if self._locked_target_id == self.HOSTILE["object_id"] else None)
         base: dict[str, Any] = {
             "docked": docked,
             "station": "Sobaseki VII - Caldari Navy Logistic Support" if docked else None,
@@ -181,6 +186,8 @@ class SecurityE2ESim:
             "drones_in_space": None,
             "drones_out": False,
             "weapons_firing": False,
+            "target_bar_supported": True,
+            "locked_target": locked_target,
             "afterburner_on": False,
             "modal": None,
         }
@@ -238,7 +245,11 @@ class SecurityE2ESim:
             elif self.stage == "ACCEPTED" and d == "undock":
                 self.stage = "SPACE_BEACON"
             elif self.stage == "SPACE_BEACON" and d == "warp_beacon":
+                self._locked_target_id = None
                 self.stage, self.fight_ticks = "SITE_FIGHT", 0
+            elif self.stage == "SITE_FIGHT" and d == "lock_target":
+                if a.get("target_id") == self.HOSTILE["object_id"]:
+                    self._locked_target_id = a["target_id"]
             elif self.stage == "SITE_CLEAR" and d == "recall_drones":
                 self._drones_out = False
             elif self.stage == "SITE_CLEAR" and d == "warp_home":

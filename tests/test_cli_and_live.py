@@ -4,8 +4,10 @@ PYTHONPATH=src python tests/test_cli_and_live.py
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -105,5 +107,89 @@ assert acts[0]["do"] == "click", acts
 assert "accept" in acts[0]["why"]
 assert mode.phase == "LOAD"
 ok("End-to-End: DistributionMode + LiveDistributionRunner tick qua AGENT -> OFFER -> LOAD dung")
+
+# 6. Live execution is owned by the exact client PID and releases on terminal return.
+from fila_bot import cli  # noqa: E402
+class _LockHandle:
+    closed = False
+    def close(self):
+        self.closed = True
+
+handle = _LockHandle()
+called = []
+window = {"pid": 4242}
+with mock.patch.object(cli, "find_client_window", return_value=window), \
+     mock.patch.object(cli, "find_all_client_windows", return_value=[]), \
+     mock.patch("fila_bot.runtime_lock.acquire", return_value=handle) as acquire:
+    result = cli._run_with_client_lock(True, lambda win: called.append(win) or 7)
+assert result == 7 and called == [window] and handle.closed
+acquire.assert_called_once_with(4242, client_id="eve-pid-4242", owner_pid=os.getpid())
+ok("live runner acquires the client-PID OS lock before work and releases it")
+
+called.clear()
+with mock.patch.object(cli, "find_client_window", return_value={"pid": 4242}), \
+     mock.patch.object(cli, "find_all_client_windows", return_value=[]), \
+     mock.patch("fila_bot.runtime_lock.acquire", side_effect=OSError("already owned")):
+    result = cli._run_with_client_lock(True, lambda _win: called.append("run") or 7)
+assert result == 3 and not called
+ok("duplicate live runner is refused before work")
+
+called.clear()
+with mock.patch.object(cli, "find_all_client_windows",
+                       return_value=[{"pid": 4242}, {"pid": 4343}]), \
+     mock.patch.object(cli, "find_client_window", return_value={"pid": 4242}), \
+     mock.patch("fila_bot.runtime_lock.acquire", return_value=handle) as acquire:
+    multi_rc = cli._run_with_client_lock(True, lambda win: called.append(win) or 7)
+assert multi_rc == 3 and not called
+acquire.assert_not_called()
+ok("live runner refuses ambiguous multiple EVE windows before taking input ownership")
+
+# Every production live command enters the shared ownership gate before a runner is built.
+window = {"pid": 4242}
+seen_live = []
+def invoke_owned(is_live, run):
+    seen_live.append(is_live)
+    return run(window if is_live else None)
+args = SimpleNamespace(live=True, confirm_input=False, max_missions=1,
+                       max_hours=1, allow_unknown_sec=False, dll=None, tick=0.1,
+                       filament="test", engine="fsm", max_runs=1,
+                       profile=None, preflight=False)
+with mock.patch.object(cli, "_run_with_client_lock", side_effect=invoke_owned), \
+     mock.patch.object(cli, "_distribution_run", return_value=21), \
+     mock.patch.object(cli, "_abyss_run", return_value=22), \
+     mock.patch.object(cli, "_security_run", return_value=23):
+    assert cli.cmd_distribution(args) == 21
+    assert cli.cmd_abyss(args) == 22
+    assert cli.cmd_security(args) == 23
+assert seen_live == [True, True, True], seen_live
+ok("distribution/abyss/security all route through client ownership")
+
+with mock.patch.object(cli, "_run_with_client_lock", side_effect=invoke_owned), \
+     mock.patch.object(cli, "_opportunities", return_value=24):
+    assert cli.cmd_opportunities(SimpleNamespace(open=True)) == 24
+ok("input-enabled Opportunities command routes through client ownership")
+
+from fila_bot import mission_cli  # noqa: E402
+with mock.patch("fila_bot.cli._run_with_client_lock",
+                side_effect=lambda is_live, run: run(window)), \
+     mock.patch.object(mission_cli, "_run_with_window", return_value=25) as run_window:
+    assert mission_cli.cmd_run(SimpleNamespace(go=True)) == 25
+run_window.assert_called_once_with(SimpleNamespace(go=True), window)
+ok("legacy mission --go route uses the same ownership gate")
+
+mission_me = mock.Mock()
+mission_runner = mock.Mock()
+mission_args = SimpleNamespace(dll=None, orbit=2500, go=True, max_rounds=1, wait=0)
+mission_window = {"pid": 4242, "title": "EVE", "origin": (0, 0), "size": (100, 100)}
+with mock.patch.object(mission_cli, "_open_eye", return_value=object()), \
+     mock.patch.object(mission_cli, "MissionEye", return_value=mission_me), \
+     mock.patch.object(mission_cli, "MissionRunner", return_value=mission_runner), \
+     mock.patch.object(mission_cli, "find_client_window", return_value=None), \
+     mock.patch.object(mission_cli, "focus"), \
+     mock.patch.object(mission_cli.time, "sleep", return_value=None):
+    closed_mission_rc = mission_cli._run_with_window(mission_args, mission_window)
+assert closed_mission_rc == 2 and not mission_me.state.called \
+    and not mission_runner.next_actions.called, (closed_mission_rc, mission_me, mission_runner)
+ok("mission --go stops before reading/acting after client session ends")
 
 print("\nALL OK test_cli_and_live")

@@ -4,6 +4,17 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 from fila_bot.mission_target import resolve_objective_target
 
+from fila_bot.mission import MissionEye
+
+class OverviewStub:
+    def overview_entries(self):
+        return [{"Name": "Pithi Arrogator", "Type": "Frigate", "center": (12, 34),
+                 "Distance": "12 km", "object_id": 30000142}]
+
+live_hostiles = MissionEye(OverviewStub()).hostiles()
+assert len(live_hostiles) == 1 and live_hostiles[0].get("object_id") == 30000142
+print('[PASS] overview itemID survives hostile classification')
+
 TEXT = ('You need to approach <a href= showinfo:10131//9002321446000117567 >'
         'Fire Cloud</a>')
 entries = [

@@ -124,6 +124,24 @@ class RealExecutor:
             "drones_in_space": self.drones_in_space,
         }
 
+    def module_state_world(self) -> dict[str, Any]:
+        """module_state cho FitController — đọc từ HUD thật qua module_buttons().
+
+        Shape giống live_security.refresh(): {\"high\": {slot: bool|None}, ...}.
+        Bot không dùng được GUI/fit khi HUD không đọc được → trả dict rỗng là
+        UNKNOWN (FitController bấm một lần/engagement, không bấm mù lặp).
+        """
+        out: dict[str, dict[int, bool | None]] = {"high": {}, "med": {}, "low": {}}
+        try:
+            mods = self.eye.module_buttons() or []
+        except Exception:      # noqa: BLE001 — sim/legacy eye không có HUD
+            return out
+        for m in mods:
+            rack, idx = m.get("rack"), m.get("index")
+            if rack in out and isinstance(idx, int):
+                out[rack][idx] = m.get("is_active")
+        return out
+
     # ---- action → keybind ----
     def _overview_entry_xy(self, label: str | None = None) -> tuple[int, int] | None:
         """Tọa độ entry overview (toạ độ TUYỆT ĐỐI trong client area).
@@ -296,19 +314,29 @@ def main() -> int:
         from fila_bot.reflex import SimExecutor
         ex: Any = SimExecutor()
         bus.emit("BOOT", mode="sim", note="trạng thái giả — chỉ test logic")
-    else:
-        from fila_bot.eye import Eye
-        try:
-            eye = Eye(dll_path=args.dll)
-        except Exception as e:  # noqa: BLE001
-            bus.emit("FATAL", reason=f"eye init fail: {e}")
-            print(f"FATAL: {e}\n→ check EVE client đang chạy + DLL đã build.", file=sys.stderr)
-            return 2
-        ex = RealExecutor(eye, input_dry=not args.confirm_input, bus=bus,
-                          humanize=not args.no_humanize)
-        bus.emit("BOOT", mode="live", input_dry=not args.confirm_input,
-                 note="THẬT. input_dry=True → chỉ log phím, không bấm")
+        return _run_bot(args, bus, cfg, ex)
 
+    from fila_bot.cli import _run_with_client_lock
+    return _run_with_client_lock(
+        True, lambda win: _run_live(args, bus, cfg, client_pid=win["pid"]))
+
+
+def _run_live(args, bus, cfg, client_pid: int) -> int:
+    from fila_bot.eye import Eye
+    try:
+        eye = Eye(dll_path=args.dll)
+    except Exception as e:  # noqa: BLE001
+        bus.emit("FATAL", reason=f"eye init fail: {e}")
+        print(f"FATAL: {e}\n→ check EVE client đang chạy + DLL đã build.", file=sys.stderr)
+        return 2
+    ex = RealExecutor(eye, input_dry=not args.confirm_input, bus=bus,
+                      humanize=not args.no_humanize)
+    bus.emit("BOOT", mode="live", input_dry=not args.confirm_input,
+             note="THẬT. input_dry=True → chỉ log phím, không bấm")
+    return _run_bot(args, bus, cfg, ex, client_pid=client_pid)
+
+
+def _run_bot(args, bus, cfg, ex, client_pid: int | None = None) -> int:
     bot = Bot(bus, cfg, ex, role=args.role, fit_type=args.fit_type,
               resist_hole=args.resist_hole)
     bus.emit("BOOT", tick_interval=cfg.tick_interval,
@@ -321,6 +349,13 @@ def main() -> int:
     ks_latch = False
     try:
         while True:
+            if client_pid is not None:
+                from fila_bot.win import find_client_window
+                if find_client_window(pid=client_pid) is None:
+                    bus.emit("SHUTDOWN", reason=f"EVE client PID {client_pid} window ended",
+                             phase=getattr(ex, "phase", "?"))
+                    print(f"\nDừng: EVE client PID {client_pid} không còn cửa sổ.")
+                    return 2
             if not args.no_killswitch:
                 pressed = kill_switch_pressed()
                 if pressed and not ks_latch:

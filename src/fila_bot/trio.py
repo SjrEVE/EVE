@@ -120,15 +120,17 @@ class TrioRole:
     def logi_tick(self, st: dict[str, Any]) -> list[dict[str, Any]]:
         acts = []
         n_kiki = st.get("kikimora_count", 0)
-        tank_hp = st.get("tank_hp", 1.0)
+        # tank_hp None = KHÔNG có báo cáo từ tank (fleet chưa publish/file cũ) —
+        # chỉ ngưỡng kikimora (data room mình) được dùng, KHÔNG đoán HP tank.
+        tank_hp = st.get("tank_hp")
         # >6 kikimora room → mở CẢ 3 reps ngay từ đầu (Gustav ngưỡng)
         if n_kiki > KIKI_SWARM_THRESHOLD and not self.reps_open:
             acts.append({"do": "all_reps_on_tank", "why": f"{n_kiki} kikimora > {KIKI_SWARM_THRESHOLD} — all reps"})
             self.reps_open = True
-        elif tank_hp < LOGI_REPS_ALL_AT_HP and not self.reps_open:
+        elif isinstance(tank_hp, (int, float)) and tank_hp < LOGI_REPS_ALL_AT_HP and not self.reps_open:
             acts.append({"do": "all_reps_on_tank", "why": f"tank hp {tank_hp:.0%} < 60%"})
             self.reps_open = True
-        elif tank_hp > 0.85 and self.reps_open:
+        elif isinstance(tank_hp, (int, float)) and tank_hp > 0.85 and self.reps_open:
             acts.append({"do": "close_extra_reps", "why": "tank ổn — tiết kiệm cap"})
             self.reps_open = False
         # cap thấp = MAYDAY (cap brick vẫn có hạn)

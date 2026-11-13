@@ -32,4 +32,14 @@ with tempfile.TemporaryDirectory(prefix="fila-suite-") as tmp:
     p.write_text("assert True\nprint('  [PASS] indented check')\nprint('[PASS] second check')\n", encoding='utf-8')
     r = subprocess.run([sys.executable, str(RUNNER)], cwd=base, capture_output=True, text=True, timeout=10)
     assert r.returncode == 0 and '(2 pass)' in r.stdout, r.stdout
-    print('[PASS] indented PASS markers count without counting embedded diagnostics')
+    print("[PASS] indented PASS markers count without counting embedded diagnostics")
+
+with tempfile.TemporaryDirectory(prefix="fila-suite-") as tmp:
+    base = Path(tmp)
+    (base / "tests").mkdir()
+    (base / "tests" / "test_local_evidence.py").write_text(
+        "print('[SKIP] local-only evidence dump is not shipped')" + chr(10), encoding="utf-8")
+    r = subprocess.run([sys.executable, str(RUNNER)], cwd=base, capture_output=True,
+                       text=True, encoding="utf-8", errors="replace", timeout=10)
+    assert r.returncode == 0 and "1 SKIP" in r.stdout and "0 FAIL" in r.stdout, r.stdout
+    print("[PASS] explicit local-evidence skip is counted, not reported as a pass")

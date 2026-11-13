@@ -275,31 +275,31 @@ def act_keep_range(target_xy: tuple[int, int] | None, distance_km: float) -> Act
     return ActionSpec("keep_range", steps)
 
 
-def act_lock(entry_xy: tuple[int, int]) -> ActionSpec:
-    """Ctrl+click entry overview = lock (keybind 'Lock target': Ctrl).
-    Sequence: keydown Ctrl → click entry → keyup Ctrl → verify qua eye.
-    (P0-3 issue #1: click+Q là SAI — Q = approach.)"""
+def act_lock(entry_xy: tuple[int, int], target_id: int | None = None) -> ActionSpec:
+    """Ctrl+click a fresh overview row and verify the requested object ID."""
     steps = [
-        {"do": "hold_ctrl_down"},          # keydown Ctrl
-        {"do": "click", "at": entry_xy},   # click giữ Ctrl
-        {"do": "hold_ctrl_up"},            # keyup Ctrl
+        {"do": "hold_ctrl_down"},
+        {"do": "click", "at": entry_xy},
+        {"do": "hold_ctrl_up"},
     ]
-    # verify: eye có ActiveItem (selected item window xuất hiện khi có selection)
-    return ActionSpec("lock", steps, verify=_verify_locked, retry_max=2, verify_wait=1.0)
+    return ActionSpec("lock", steps,
+                      verify=lambda eye: _verify_locked(eye, target_id),
+                      retry_max=2, verify_wait=1.0)
 
 
-def _verify_locked(eye) -> bool:
-    """Verify lock by the client's OWN target bar (grounded).
-
-    Ground 2026-11-12: Sanderling's parser reads locked targets from
-    `TargetInBar` nodes and marks the active one via a descendant
-    `ActiveTargetOnBracket`. The reader emits exactly those type names, so a lock
-    is now verifiable instead of assumed: before this, this function was
-    hard-coded `return False`, so no lock was ever confirmed and the drone
-    `F` command had no target to attack.
-    """
+def _verify_locked(eye, expected_object_id: int | None = None) -> bool:
+    """Verify active target against a fresh client read, optionally by exact ID."""
     try:
-        return eye.locked_target() is not None
+        # Live Eye owns a DLL; refresh before every postcondition check so the
+        # result cannot be satisfied by the pre-click snapshot.
+        if getattr(eye, "dll", None) is not None and eye.refresh() is None:
+            return False
+        target = eye.locked_target()
+        if target is None:
+            return False
+        if expected_object_id is not None:
+            return target.get("object_id") == expected_object_id
+        return True
     except Exception:  # noqa: BLE001 — sim/legacy eye without target bar
         return False
 

@@ -1,15 +1,9 @@
 @echo off
 chcp 65001 >nul
-title FILA-BOT AUTO - LIVE SECURITY
+title FILA-BOT AUTO - ABYSS SIM
 cd /d "%~dp0"
 
-REM ======================================================================
-REM  AUTO.bat - BAM DUP LA CHAY. Khong can go lenh, khong can chon menu.
-REM  Bot tu ket noi EVE client dang mo, doc UI tree, tu bam phim/chuot that.
-REM  Mac dinh 1 mission co giam sat. Muon nhieu hon: AUTO.bat 3
-REM  Dung an toan bat ky luc nao: Ctrl+C (bot nha phim + dung sach).
-REM  CANH BAO: botting vi pham EULA CCP - chi chay acc Boss da chap nhan.
-REM ======================================================================
+REM Abyss-only entrypoint. Always one SIM run; no EVE connection or input.
 
 set "PY="
 if exist "%~dp0python\python.exe" set "PY=%~dp0python\python.exe"
@@ -18,21 +12,23 @@ if "%PY%"=="" set "PY=python"
 
 set PYTHONPATH=%~dp0src
 set PYTHONIOENCODING=utf-8
-set "N=%~1"
-if "%N%"=="" set "N=1"
-
-echo ======================================================================
-echo   FILA-BOT AUTO - LIVE / BAM PHIM THAT / %N% MISSION
-echo ======================================================================
-echo  Dang khoi dong... (cold-start reader ~10 giay)
-echo  Nhan Ctrl+C de dung an toan. Khong can lam gi them.
-echo  Log live: logs\live_latest.log — bam XEM_LOG.bat de mo cua so xem.
-echo.
-
 set "LOGDIR=%~dp0logs"
 if not exist "%LOGDIR%" mkdir "%LOGDIR%"
+set "LOGFILE=%LOGDIR%\abyss_sim_latest.log"
+type nul > "%LOGFILE%"
 
-"%PY%" -u -m fila_bot.cli security --live --confirm-input --max-missions %N% --tick 0.5 2>&1 | powershell -NoProfile -Command "$input | ForEach-Object { $_; $_ | Out-File -FilePath '%~dp0logs\live_latest.log' -Append -Encoding utf8 }"
+echo ======================================================================
+echo   FILA-BOT — ABYSS SIM / 1 RUN
+echo ======================================================================
+echo SIM only: no EVE connection and no mouse or keyboard input.
+echo Log: logs\abyss_sim_latest.log
+echo Use XEM_LOG.bat in another window to follow the log.
 echo.
-echo [KET THUC] exit code = %errorlevel%
+
+"%PY%" -u -m fila_bot.cli abyss --filament "Tranquil Exotic Filament" --max-runs 1 > "%LOGFILE%" 2>&1
+set "RC=%errorlevel%"
+type "%LOGFILE%"
+echo.
+echo [END] exit code = %RC%
 pause
+exit /b %RC%

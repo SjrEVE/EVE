@@ -20,29 +20,24 @@ from .mission_target import _distance_m  # noqa: F401  (AU-aware parse)
 from .rats import classify, lock_order  # noqa: E402
 
 # --- EVE-Survival ground: trigger/avoid per mission (12-13/11 reports) ---
-MISSION_TACTICS: dict[str, dict[str, Any]] = {
-    "gone berserk": {
-        "faction": "EoM",
-        "trigger_names": ("Fiend",),          # giết trigger CUỐI cùng mỗi group
-        "kill_first": ("Imp",),               # Imp trước, Fiend sau → tránh spawn wave
-        "waves": 2,                            # group clear → Wave1 (3x Fiend) → Wave2 (2x Incubus)
-        "orbit_km": 20,                        # frigate rats — orbit gần giữ MWD
+MISSION_TACTICS: dict[tuple[str, int], dict[str, Any]] = {
+    ("gone berserk", 1): {
+        "faction": "EoM", "trigger_names": ("Fiend",), "kill_first": ("Imp",),
+        "orbit_km": 20, "source": "eve-survival GoneBerserk1 (2017)",
     },
-    "pirate intrusion": {
-        "faction": "Guristas",
-        "trigger_names": (),                   # report không ghi trigger — all-aggro pockets
-        "kill_first": ("Saboteur", "Killer", "Annihilator"),  # JAMMING trước (EWAR)
-        "jamming_names": ("Killer", "Annihilator", "Saboteur", "Nullifier"),
-        "pockets": 2,
-        "gate_locked_until_clear": True,       # gate pocket1→pocket2 khóa tới khi clear
-        "orbit_km": 25,
+    ("gone berserk", 2): {
+        "faction": "EoM", "trigger_names": ("Demon",), "kill_first": ("Succubus",),
+        "orbit_km": 20, "source": "eve-survival GoneBerserk2 (2015; verify live)",
     },
-    "the blockade": {
-        "faction": "Guristas",
-        "trigger_names": ("Plunderer", "Wrecker", "Infiltrator"),
-        "kill_first": ("Stasis Tower",),       # web tower giết đầu để giữ speed
-        "waves": 3,
-        "orbit_km": 20,
+    ("pirate intrusion", 2): {
+        "faction": "Guristas", "trigger_names": (),
+        "kill_first": ("Saboteur", "Killer", "Annihilator"), "orbit_km": 25,
+        "source": "unverified level/pocket mapping; do not automate trigger without live report",
+    },
+    ("the blockade", 2): {
+        "faction": "Guristas", "trigger_names": ("Plunderer", "Wrecker", "Infiltrator"),
+        "kill_first": ("Stasis Tower",), "orbit_km": 20,
+        "source": "unverified level/pocket mapping; verify before live",
     },
 }
 
@@ -50,8 +45,9 @@ JAMMING_TOKENS = ("Killer", "Annihilator", "Saboteur", "Nullifier", "Dampener")
 WEB_TOKENS = ("Webifier", "Stasis", "Web")
 TRIGGER_HINTS = ("Trigger", "Fiend", "Plunderer", "Wrecker", "Infiltrator")
 
-SURVIVAL_HP = 0.30       # thấp hơn escape_hp FSM (0.25 — brain phản ứng TRƯỚC FSM)
-SURVIVAL_CAP = 25.0      # %
+SURVIVAL_HP = 0.30
+SURVIVAL_CAP = 25.0
+# A tactical default only. Never substitute for fitted weapon/drone/lock ranges.
 ENGAGE_RANGE_M = 25_000.0
 DRONE_LEASH_M = 25_000.0
 
@@ -74,10 +70,10 @@ class SecurityBrain:
 
     def __init__(self, mission_title: str | None = None,
                  fit: dict[str, Any] | None = None,
-                 clock: Any = None) -> None:
+                 clock: Any = None, mission_level: int | None = None) -> None:
         self.mission_title = mission_title or ""
         key = self.mission_title.strip().lower()
-        self.tactics = MISSION_TACTICS.get(key, {})
+        self.tactics = MISSION_TACTICS.get((key, mission_level), {}) if mission_level else {}
         self.fit = fit or {}
         self.locked_names: set[str] = set()
         self.drones_out: bool = False
@@ -86,6 +82,19 @@ class SecurityBrain:
         self.last_why: str = ""
 
     # ------------------------------------------------------------------ senses
+    def rank_targets(self, hostiles: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Pure ranking of authorized production contacts; no assumed locks."""
+        triggers = self.tactics.get("trigger_names") or ()
+        first = self.tactics.get("kill_first") or ()
+        def key(row):
+            name = str(row.get("name") or "")
+            tier = (2 if _has_token(name, triggers) else
+                    0 if _has_token(name, first) else 1)
+            distance = _distance_m(row.get("distance"))
+            return (tier, row.get("priority", 6),
+                    distance if distance is not None else float("inf"), name)
+        return sorted(hostiles, key=key)
+
     @staticmethod
     def _hostiles(overview: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Quái thật: classify được, faction combat, KHÔNG station/gate/wreck."""

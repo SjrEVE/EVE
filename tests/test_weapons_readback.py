@@ -9,9 +9,11 @@ from fila_bot.modes.live_security import LiveSecurityRunner
 def battle(**kw):
     w = {"docked": False, "location_known": True, "snapshot_valid": True,
          "connection_lost": False, "ship_health": {"shield": 1.0, "armor": 1.0,
-         "structure": 1.0}, "hostiles": [{"name": "Guristas Frigate",
+         "structure": 1.0}, "hostiles": [{"name": "Guristas Frigate", "object_id": 101,
          "faction": "Guristas", "priority": 1, "distance": 1000,
-         "center": (500, 500)}], "missions": ["The Blockade"],
+         "center": (500, 500)}], "target_bar_supported": True,
+         "locked_target": {"object_id": 101, "is_active": True,
+                           "texts": ["Guristas Frigate"]}, "missions": ["The Blockade"],
          "active_mission_title": "The Blockade", "mission_support": "combat",
          "has_active_mission": True, "mission_panel_observed": True,
          "gates": [], "beacons": [], "drones_out": True,

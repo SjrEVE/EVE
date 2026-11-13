@@ -11,10 +11,10 @@ ULONGLONG cache_last_flushed = 0;
 char* ui_json = NULL;
 HANDLE hProcess;
 
-char* DICT_KEYS_OF_INTEREST[26] = {
+char* DICT_KEYS_OF_INTEREST[28] = {
 	"_top", "_left", "_width", "_height", "_displayX", "_displayY",
 	"_displayHeight", "_displayWidth",
-	"_name", "_text", "_setText",
+	"_name", "_text", "_setText", "itemID", "state",
 	"children",
 	"texturePath", "_bgTexturePath",
 	"_hint", "_display",

@@ -71,8 +71,8 @@ def profile_errors(data: dict[str, Any]) -> list[str]:
     for key in ('client_sha256', 'reader_sha256'):
         if not isinstance(data.get(key), str) or not re.fullmatch(r'[0-9a-f]{64}', data[key]):
             errors.append(f'{key} must pin the inspected build')
-    if type(data.get('level')) is not int or data['level'] != 1:
-        errors.append('V1 supports an explicitly configured level 1 profile')
+    if type(data.get('level')) is not int or data['level'] not in (1, 2):
+        errors.append('profile level must be 1 or 2 (L2 opened by owner 2026-11-13)')
     if data.get('accept_policy') != 'non_anomic':
         errors.append('accept_policy must preserve non_anomic owner policy')
     slots = data.get('weapon_slots', [1, 2, 3, 4])

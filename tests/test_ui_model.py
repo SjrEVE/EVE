@@ -20,6 +20,28 @@ def ok(name):
 BUS = tempfile.mkdtemp(prefix="fila_ui_")
 
 
+class _NoopSupervisor:
+    state = "IDLE"
+
+    def send(self, _command):
+        pass
+
+    def shutdown(self):
+        pass
+
+
+# The GUI bypassed the CLI ownership gate and could build a real reader directly.
+for dry in (True, False):
+    factory_spy = mock.Mock(return_value=_NoopSupervisor())
+    m = UiModel(factory=factory_spy, threaded=False)
+    m.mode, m.sim, m.dry = "distribution", False, dry
+    m.start()
+    view = m.view()
+    assert not factory_spy.called, "GUI must not construct a live reader outside the client lock"
+    assert view["danger"] and "fila_bot.cli" in view["banner"]
+    ok("GUI refuses live-reader/input mode until ownership is available")
+
+
 def factory(mode, **kw):
     sup = build_supervisor(mode, bus_dir=BUS, **kw)
     sup.kill_switch = lambda: False      # test khong doc ban phim that

@@ -21,7 +21,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from fila_bot.eye import Eye  # noqa: E402
 from fila_bot.ui_model import ModeUnavailable, build_supervisor  # noqa: E402
 from fila_bot.version import banner, read_version  # noqa: E402
-from fila_bot.win import find_client_window  # noqa: E402
+from fila_bot.win import find_all_client_windows, find_client_window  # noqa: E402
 from fila_bot.world_snapshot import parse_world  # noqa: E402
 
 
@@ -38,7 +38,42 @@ def _build(**kw):
         return None
 
 
-def _watch(sup, *, abyss: bool, max_runs: int | None = None, tick: float = 0.5) -> int:
+def _run_with_client_lock(is_live: bool, run):
+    """Acquire exclusive ownership before any live reader/input work."""
+    if not is_live:
+        return run(None)
+    try:
+        windows = find_all_client_windows()
+    except Exception as exc:  # noqa: BLE001 — no live input if client enumeration is unknown
+        print(f"FATAL: Khong the xac dinh EVE client windows: {exc}")
+        return 2
+    if len(windows) > 1:
+        print(f"[KHONG CHAY] Co {len(windows)} cua so EVE; chua co client selector theo PID. "
+              "Dong cac client phu de tranh doc/bam nham tai khoan.")
+        return 3
+    win = windows[0] if windows else find_client_window()
+    if not win:
+        print("FATAL: Khong tim thay cua so EVE client; khong khoi dong live runner.")
+        return 2
+    pid = win.get("pid")
+    if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
+        print("FATAL: EVE window khong co PID hop le; khong khoi dong live runner.")
+        return 2
+    from .runtime_lock import acquire as acquire_client_lock
+    try:
+        owner = acquire_client_lock(pid, client_id=f"eve-pid-{pid}",
+                                   owner_pid=os.getpid())
+    except OSError as exc:
+        print(f"[KHONG CHAY] Client PID {pid} da co owner: {exc}")
+        return 3
+    try:
+        return run(win)
+    finally:
+        owner.close()
+
+
+def _watch(sup, *, abyss: bool, max_runs: int | None = None, tick: float = 0.5,
+           client_pid: int | None = None) -> int:
     """Vong theo doi co DIEU KIEN DUNG THAT (truoc day lap vo han vi Supervisor
     khong bao gio o trang thai STOPPED/BLOCKED).
 
@@ -47,6 +82,10 @@ def _watch(sup, *, abyss: bool, max_runs: int | None = None, tick: float = 0.5) 
     import logging
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s %(name)s %(levelname)s %(message)s")
+    if client_pid is not None and find_client_window(pid=client_pid) is None:
+        print(f"[DUNG] EVE client PID {client_pid} disappeared before runner start.")
+        sup.shutdown()
+        return 2
     sup.start_thread(tick_interval=tick)
     sup.send("START")
     print("\nBot da bat dau. Nhan Ctrl+C de dung an toan...")
@@ -55,6 +94,10 @@ def _watch(sup, *, abyss: bool, max_runs: int | None = None, tick: float = 0.5) 
     try:
         while True:
             time.sleep(1.0)
+            if client_pid is not None and find_client_window(pid=client_pid) is None:
+                print(f"\n[DUNG] EVE client PID {client_pid} is no longer available; ending this session.")
+                sup.shutdown()
+                return 2
             st = sup.mode.status() if hasattr(sup.mode, "status") else {}
             phase = getattr(sup.mode, "phase", "?")
             runs = st.get("runs", 0)
@@ -121,6 +164,55 @@ def _watch(sup, *, abyss: bool, max_runs: int | None = None, tick: float = 0.5) 
         print("\nNhan lenh dung tu nguoi dung... nha phim + dung sach.")
         sup.shutdown()
         return 130
+
+
+def cmd_route(args) -> int:
+    """Autopilot HỖ TRỢ: người set destination, bot thay tay jump theo route."""
+    is_live = bool(args.live)
+    is_dry = not bool(args.confirm_input)
+
+    def run(win: dict | None) -> int:
+        from fila_bot.modes.route_assist import RouteAssistRunner
+        runner = RouteAssistRunner(Eye(dll_path=args.dll), dry=is_dry,
+                                   max_jumps=args.max_jumps,
+                                   dock_at_end=bool(args.dock_at_end))
+        if win is not None:
+            from fila_bot.win import focus
+            focus(win)
+        print("=" * 60)
+        print(banner() + " — ROUTE ASSIST (autopilot ho tro)")
+        print(f"Che do: {'LIVE (Client that)' if is_live else 'DRY (doc, khong bam)'}")
+        print("Nguoi set destination trong game; bot chi thay tay jump theo route.")
+        print("Ctrl+C de dung. Bot KHONG tu set route, KHONG dock tram khac.")
+        print("=" * 60)
+        try:
+            while True:
+                time.sleep(1.0)
+                if win is not None and find_client_window(pid=win.get("pid")) is None:
+                    print("\n[DUNG] EVE client window ended.")
+                    return 2
+                world = runner.read_world()
+                acts = runner.assist.tick(world)
+                for a in acts:
+                    why = a.get("why") or a.get("do")
+                    print(f"[{time.strftime('%H:%M:%S')}] {runner.assist.state} | {why}")
+                results = runner.apply(acts)
+                for r in results:
+                    if r.get("act") in ("jump", "dock", "undock"):
+                        print(f"    · {r['act']} [{r.get('status') or ('OK' if r.get('ok') else 'FAIL')}]"
+                              + (f" {r.get('gate') or r.get('station') or ''}" ))
+                if acts and acts[0].get("do") in ("done", "blocked", "estop"):
+                    runner.assist.state = "IDLE" if acts[0]["do"] == "done" else "BLOCKED"
+                    if acts[0]["do"] == "done":
+                        print(f"\n[OK] {acts[0].get('why')}")
+                        return 0
+                    print(f"\n[DUNG — fail-closed] {runner.assist.blocked or acts[0].get('why')}")
+                    return 3
+        except KeyboardInterrupt:
+            print("\nDung sach — Ctrl+C.")
+            return 130
+
+    return _run_with_client_lock(is_live, run)
 
 
 def cmd_status(args) -> int:
@@ -221,7 +313,13 @@ def cmd_distribution(args) -> int:
     """Chay bot Distribution (Courier) end-to-end."""
     is_live = bool(args.live)
     is_dry = not bool(args.confirm_input)
+    return _run_with_client_lock(
+        is_live, lambda win: _distribution_run(args, is_live, is_dry,
+                                              client_pid=(win or {}).get("pid")))
 
+
+def _distribution_run(args, is_live: bool, is_dry: bool,
+                     client_pid: int | None = None) -> int:
     print("=" * 60)
     print(banner() + " — DISTRIBUTION COURIER MISSION RUNNER")
     print(f"Che do: {'LIVE (Client that)' if is_live else 'SIM (Gia lap test)'}")
@@ -230,30 +328,32 @@ def cmd_distribution(args) -> int:
     print(f"Route sec: {'BO QUA kiem tra (--allow-unknown-sec)' if args.allow_unknown_sec else 'bat buoc hisec'}")
     print("=" * 60)
 
-    if is_live and not is_dry:
-        win = find_client_window()
-        if not win:
-            print("FATAL: Khong tim thay cua so EVE client. Khong the chay che do confirm-input.")
-            return 2
-
     sup = _build(mode="distribution", sim=not is_live, dry=is_dry, dll=args.dll,
                  max_hours=args.max_hours, max_missions=args.max_missions,
                  allow_unknown_sec=bool(args.allow_unknown_sec))
     if sup is None:
         return 2
-    return _watch(sup, abyss=False, tick=args.tick)
+    return _watch(sup, abyss=False, tick=args.tick,
+                  client_pid=client_pid if is_live else None)
 
 
 def cmd_abyss(args) -> int:
     """Chay bot Abyssal Deadspace end-to-end."""
     is_live = bool(args.live)
     is_dry = not bool(args.confirm_input)
+    return _run_with_client_lock(
+        is_live, lambda win: _abyss_run(args, is_live, is_dry,
+                                       client_pid=(win or {}).get("pid")))
 
+
+def _abyss_run(args, is_live: bool, is_dry: bool,
+               client_pid: int | None = None) -> int:
     print("=" * 60)
     print(banner() + " — ABYSSAL DEADSPACE RUNNER")
     print(f"Che do: {'LIVE (Client that)' if is_live else 'SIM (Gia lap test)'}")
     print(f"Thao tac: {'THUC THI PHIM/CHUOT THAT' if not is_dry else 'DRY-RUN (Chi log, an toan)'}")
     print(f"Filament: {args.filament}   |   Engine: {args.engine}   |   So run: {args.max_runs or 'Vo han'}")
+    print(f"Fit: {args.fit_type}" + (f"   |   Lo khang: {args.resist_hole}" if args.resist_hole else ""))
     if is_live:
         print("LUU Y: undock/filament/gate/dock cua Abyss CHUA ground tren client that —")
         print("        bot chi chay guards va se DUNG voi ly do thay vi bam mu.")
@@ -261,10 +361,12 @@ def cmd_abyss(args) -> int:
 
     sup = _build(mode="abyss", sim=not is_live, dry=is_dry, dll=args.dll,
                  max_hours=args.max_hours, filament=args.filament,
-                 max_runs=args.max_runs, engine=args.engine)
+                 max_runs=args.max_runs, engine=args.engine,
+                 fit_type=args.fit_type, resist_hole=args.resist_hole)
     if sup is None:
         return 2
-    return _watch(sup, abyss=True, max_runs=args.max_runs, tick=args.tick)
+    return _watch(sup, abyss=True, max_runs=args.max_runs, tick=args.tick,
+                  client_pid=client_pid if is_live else None)
 
 
 def cmd_security(args) -> int:
@@ -275,16 +377,13 @@ def cmd_security(args) -> int:
     if getattr(args, "preflight", False):
         return _security_preflight(args)
 
-    # Cấm 2 bot cùng bấm game (Boss 13-11): kill bot cũ còn sống trước khi chạy.
-    from fila_bot.single_instance import acquire, release
-    acquire("security live" if is_live and not is_dry else "security dry")
-    try:
-        return _security_run(args, is_live, is_dry)
-    finally:
-        release()
+    return _run_with_client_lock(
+        is_live, lambda win: _security_run(args, is_live, is_dry,
+                                          client_pid=(win or {}).get("pid")))
 
 
-def _security_run(args, is_live: bool, is_dry: bool) -> int:
+def _security_run(args, is_live: bool, is_dry: bool,
+                  client_pid: int | None = None) -> int:
     print("=" * 60)
     print(banner() + " — SECURITY PVE MISSION RUNNER (GILA COMBAT DOCTRINE)")
     print(f"Che do: {'LIVE (Client that)' if is_live else 'SIM (Gia lap test)'}")
@@ -292,18 +391,13 @@ def _security_run(args, is_live: bool, is_dry: bool) -> int:
     print(f"Gioi han: {args.max_missions or 'Vo han'} nhiem vu")
     print("=" * 60)
 
-    if is_live and not is_dry:
-        win = find_client_window()
-        if not win:
-            print("FATAL: Khong tim thay cua so EVE client. Khong the chay che do confirm-input.")
-            return 2
-
     sup = _build(mode="security", sim=not is_live, dry=is_dry, dll=args.dll,
                  max_hours=args.max_hours, max_missions=args.max_missions,
                  profile=getattr(args, 'profile', None))
     if sup is None:
         return 2
-    return _watch(sup, abyss=False, tick=args.tick)
+    return _watch(sup, abyss=False, tick=args.tick,
+                  client_pid=client_pid if is_live else None)
 
 
 def _security_preflight(args) -> int:
@@ -340,9 +434,16 @@ def _security_preflight(args) -> int:
 
 
 def cmd_opportunities(args) -> int:
+    """Read the panel, or own the client before opening it with input."""
+    if args.open:
+        return _run_with_client_lock(True, lambda win: _opportunities(args, win))
+    return _opportunities(args)
+
+
+def _opportunities(args, client_window=None) -> int:
     """Doc panel Opportunities (AIR Career Program) — Freelance Jobs/Agent Missions."""
     print("=== DANG KET NOI EVE CLIENT... ===")
-    win = find_client_window()
+    win = client_window or find_client_window()
     if win:
         print(f"[OK] Cua so EVE: '{win['title']}' | Origin: {win['origin']} | Size: {win['size']}")
     else:
@@ -360,7 +461,6 @@ def cmd_opportunities(args) -> int:
 
     data = parse_jobboard(eye.root)
     if not data.get("opened") and args.open:
-        win = find_client_window()
         print("[INFO] JobBoardWindow chua mo -> bam nut airCareerProgram (16,112)...")
         from fila_bot import control as ctl
         btn = eye._find_by_name("airCareerProgram")
@@ -428,6 +528,12 @@ def main():
     p_aby.add_argument("--max-runs", type=int, default=None, help="So run abyss toi da")
     p_aby.add_argument("--engine", choices=("fsm", "bt"), default="fsm",
                        help="Bo dieu khien: fsm (mac dinh) hoac bt (Behavior Tree)")
+    p_aby.add_argument("--fit-type", default="default",
+                       help="Fit tau: 'ab_punisher' (Punisher T1 Elec, fit-map san) "
+                            "hoac 'default' (orbit 10km, khong module control)")
+    p_aby.add_argument("--resist-hole", default=None,
+                       choices=("em", "thermal", "kinetic", "explosive"),
+                       help="Lo khang fit — uu tien diet rat trung lo")
     p_aby.add_argument("--max-hours", type=float, default=4.0, help="So gio chay toi da")
     p_aby.add_argument("--tick", type=float, default=0.3, help="Tick interval (giay)")
     p_aby.set_defaults(func=cmd_abyss)
@@ -445,6 +551,20 @@ def main():
     p_sec.add_argument("--client-exe", default="C:/Fenris Creations/EVE/tq/bin64/exefile.exe",
                        help="Client binary whose SHA256 is pinned in the profile")
     p_sec.set_defaults(func=cmd_security)
+
+    # route (autopilot hỗ trợ)
+    p_route = sub.add_parser("route",
+                             help="Autopilot ho tro: set destination truoc, bot thay tay jump")
+    p_route.add_argument("--live", action="store_true",
+                         help="Chay tren client EVE that (mac dinh chi doc)")
+    p_route.add_argument("--confirm-input", action="store_true",
+                         help="Cho phep bam D+click that (mac dinh chi log)")
+    p_route.add_argument("--max-jumps", type=int, default=None,
+                         help="Gioi han so jump trong phien nay (an toan)")
+    p_route.add_argument("--dock-at-end", action="store_true",
+                         help="Sau jump cu: dock dung station khop destination (khong thi cho)")
+    p_route.add_argument("--dll", default=None, help="Duong dan eve-memory-reader.dll")
+    p_route.set_defaults(func=cmd_route)
 
     # inspect
     p_ins = sub.add_parser("inspect", help="Mo hoac in thong tin UI inspector")

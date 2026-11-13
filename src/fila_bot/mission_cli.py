@@ -50,15 +50,20 @@ def cmd_plan(args) -> int:
 
 
 def cmd_run(args) -> int:
+    from fila_bot.cli import _run_with_client_lock
+    if not args.go:
+        return _run_with_window(args, None)
+    return _run_with_client_lock(True, lambda win: _run_with_window(args, win))
+
+
+def _run_with_window(args, win) -> int:
     from fila_bot import control as ctl
 
     e = _open_eye(args.dll)
     me = MissionEye(e)
     runner = MissionRunner(me, orbit_km=args.orbit)
     dry = not args.go
-    win = None
     if not dry:
-        win = find_client_window()
         if win is None:
             print("FATAL: không tìm thấy cửa sổ EVE (exefile.exe) — không bấm mù")
             return 2
@@ -66,7 +71,12 @@ def cmd_run(args) -> int:
         print(f"window: {win['title']} origin={win['origin']} size={win['size']}")
         time.sleep(0.5)
     rounds = 0
+    client_pid = win.get("pid") if isinstance(win, dict) else None
     while rounds < args.max_rounds:
+        if args.go and (not isinstance(client_pid, int) or isinstance(client_pid, bool)
+                        or client_pid <= 0 or find_client_window(pid=client_pid) is None):
+            print("DUNG: EVE client window/PID khong con ton tai; ket thuc phien mission.")
+            return 2
         rounds += 1
         st = me.state()
         acts = runner.next_actions()

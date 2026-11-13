@@ -1,6 +1,5 @@
-"""Chay toan bo test suite nhanh va an toan (8 giay cho 23 files test).
+"""Run all standalone test scripts; report PASS, explicit local-only SKIP, and FAIL.
 Usage: python tests/run_all.py
-Ket qua cung duoc append ra logs/live_latest.log (UTF-8) cho XEM_LOG.bat.
 """
 import glob
 import os
@@ -13,6 +12,7 @@ def main():
     t0 = time.time()
     files = sorted(glob.glob("tests/test_*.py"))
     total_pass = 0
+    total_skipped = 0
     failed = []
     env = os.environ.copy()
     env["PYTHONPATH"] = "src"
@@ -35,15 +35,22 @@ def main():
                 failed.append((f, "FAIL marker despite exit zero\n" + res.stdout))
                 continue
             cnt = sum(line.lstrip().startswith("[PASS] ") for line in res.stdout.splitlines())
-            if cnt == 0:
+            skipped = sum(line.lstrip().startswith("[SKIP] ") for line in res.stdout.splitlines())
+            if cnt == 0 and skipped == 0:
                 failed.append((f, "ZERO_PASS: script executed no reported checks"))
                 continue
             total_pass += cnt
-            print(f"[OK] {f} ({cnt} pass)")
+            total_skipped += skipped
+            if cnt:
+                suffix = f", {skipped} skip" if skipped else ""
+                print(f"[OK] {f} ({cnt} pass{suffix})")
+            else:
+                print(f"[SKIP] {f} ({skipped} skip)")
 
     duration = time.time() - t0
     print("-" * 50)
-    print(f"Ket qua: {len(files)} test files, {total_pass} PASS, {len(failed)} FAIL in {duration:.2f}s")
+    print(f"Ket qua: {len(files)} test files, {total_pass} PASS, "
+          f"{total_skipped} SKIP, {len(failed)} FAIL in {duration:.2f}s")
     if failed:
         for f, err in failed:
             print(f"\nFAIL: {f}")

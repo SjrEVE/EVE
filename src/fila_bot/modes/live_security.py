@@ -292,6 +292,7 @@ class LiveSecurityRunner:
             "gates": gates,
             "beacons": beacons,
             "ship_health": snap.ship_health,
+            "capacitor_percent": snap.capacitor_percent,
             "speed_mps": snap.speed_mps,
             "maneuver": snap.maneuver,
             "undock_xy": undock_xy,
@@ -361,6 +362,37 @@ class LiveSecurityRunner:
         "cannot tell" — the FSM must keep its old behaviour instead of blocking.
         """
         return callable(getattr(self.eye, "targets_in_bar", None))
+
+    def _resolve_lock_target(self, target_id: Any, target_name: Any) -> tuple[int, int] | None:
+        """Refresh the live overview and resolve one row by exact client object ID."""
+        if (not isinstance(target_id, int) or isinstance(target_id, bool)
+                or target_id <= 0):
+            return None
+        refresh = getattr(self.eye, "refresh", None)
+        entries = getattr(self.eye, "overview_entries", None)
+        if not callable(refresh) or not callable(entries):
+            return None
+        try:
+            if refresh() is None:
+                return None
+            rows = entries()
+            if not isinstance(rows, list):
+                return None
+            matches = [e for e in rows
+                       if isinstance(e, dict) and e.get("object_id") == target_id]
+            if len(matches) != 1:
+                return None
+            row = matches[0]
+            if target_name and str(row.get("Name") or "").strip().casefold() != \
+                    str(target_name).strip().casefold():
+                return None
+            xy = row.get("center")
+            if (not isinstance(xy, (tuple, list)) or len(xy) != 2
+                    or any(not isinstance(v, int) or isinstance(v, bool) for v in xy)):
+                return None
+            return int(xy[0]), int(xy[1])
+        except Exception:  # noqa: BLE001 — stale/partial client tree fails closed
+            return None
 
     def apply(self, acts: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Thực thi danh sách action do SecurityMode phát ra trên game client."""
@@ -535,11 +567,19 @@ class LiveSecurityRunner:
                     r["note"] = "toggle_defense thiếu slot — không bấm mù"
 
             elif kind == "lock_target":
-                xy = a.get("at")
-                if xy:
-                    spec = ctl.act_lock(xy)
+                target_id = a.get("target_id")
+                target_name = a.get("target_name")
+                xy = self._resolve_lock_target(target_id, target_name)
+                if xy is None:
+                    r["status"] = "IDENTITY_UNRESOLVED"
+                    r["note"] = ("lock không gửi: overview không có đúng một row "
+                                 "fresh khớp client object ID/name")
+                else:
+                    spec = ctl.act_lock(xy, target_id=target_id)
                     _execute(spec, eye=self.eye, dry=self.dry, win=self.win)
-                    # Read-back is performed by the next supervisor snapshot.
+                    r["target_id"] = target_id
+                    r["resolved_at"] = xy
+                    # This action is verified by the post-input target-bar readback.
 
             elif kind == "fire_weapons":
                 # Press only slots OBSERVED inactive. Pressing an already-active
@@ -595,16 +635,22 @@ class LiveSecurityRunner:
                     r["note"] = f"approach_target ({xy})"
 
             elif kind == "close_distance":
-                # Bay tới mục tiêu đang ở ngoài tầm bắn: approach (Q) là lệnh
-                # duy nhất khiến tàu thực sự di chuyển tới đối tượng.
-                xy = a.get("at")
-                if xy:
+                # Combat approach must use a fresh row resolved by exact client ID;
+                # the planner's previous screen coordinates may now identify another object.
+                target_id = a.get("target_id")
+                target_name = a.get("target_name")
+                xy = self._resolve_lock_target(target_id, target_name)
+                if xy is None:
+                    r["ok"] = False
+                    r["status"] = "IDENTITY_UNRESOLVED"
+                    r["note"] = ("approach không gửi: overview không có đúng một row "
+                                 "fresh khớp client object ID/name")
+                else:
                     spec = ctl.act_approach(xy)
                     _execute(spec, eye=self.eye, dry=self.dry, win=self.win)
+                    r["target_id"] = target_id
+                    r["resolved_at"] = xy
                     r["note"] = f"close_distance → approach ({xy})"
-                else:
-                    r["status"] = "NOT_SENT"
-                    r["note"] = "close_distance thiếu toạ độ — không click mù"
 
             elif kind == "activate_gate":
                 xy = a.get("at")

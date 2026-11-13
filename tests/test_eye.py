@@ -111,7 +111,7 @@ SHIP_FAKE = {
             {"address": 131, "type": "EveLabelSmall", "attrs": {"_setText": "Distance", "_displayX": 20, "_displayY": 0, "_displayWidth": 60, "_displayHeight": 18}, "children": []},
             {"address": 132, "type": "EveLabelSmall", "attrs": {"_setText": "Name", "_displayX": 90, "_displayY": 0, "_displayWidth": 60, "_displayHeight": 18}, "children": []},
             {"address": 133, "type": "EveLabelSmall", "attrs": {"_setText": "Type", "_displayX": 200, "_displayY": 0, "_displayWidth": 80, "_displayHeight": 18}, "children": []},
-            {"address": 135, "type": "OverviewScrollEntry", "attrs": {"_displayX": 0, "_displayY": 24, "_displayWidth": 428, "_displayHeight": 24}, "children": [
+            {"address": 135, "type": "OverviewScrollEntry", "attrs": {"itemID": 60003460, "_displayX": 0, "_displayY": 24, "_displayWidth": 428, "_displayHeight": 24}, "children": [
                 {"address": 136, "type": "OverviewLabel", "attrs": {"_text": "12 km", "_displayX": 20, "_displayY": 3, "_displayWidth": 60, "_displayHeight": 18}, "children": []},
                 {"address": 137, "type": "OverviewLabel", "attrs": {"_text": "Kikimora", "_displayX": 90, "_displayY": 3, "_displayWidth": 60, "_displayHeight": 18}, "children": []},
                 {"address": 138, "type": "OverviewLabel", "attrs": {"_text": "Triglavian", "_displayX": 200, "_displayY": 3, "_displayWidth": 80, "_displayHeight": 18}, "children": []},
@@ -154,6 +154,16 @@ ok("maneuver_read", mv == "approach", str(mv))
 ov = e2.overview_entries()
 ok("overview_headers_mapped", len(ov) == 2 and ov[0].get("Name") == "Kikimora"
    and ov[0].get("Distance") == "12 km", str(ov[:1]))
+ok("overview exports client itemID", ov[0].get("object_id") == 60003460, str(ov[:1]))
+nested_eye = Eye.__new__(Eye)
+nested_eye.root = {"type": "UIRoot", "attrs": {}, "children": [
+    {"type": "OverviewWindow", "attrs": {"_name": "overview"}, "children": [
+        {"type": "OverviewScrollEntry", "attrs": {"_sr": {"itemID": 999}},
+         "children": [{"type": "OverviewLabel", "attrs": {"_text": "Kikimora"},
+                       "children": []}]}]}]}
+nested_rows = nested_eye.overview_entries()
+ok("overview does not treat nested _sr metadata as row identity",
+   len(nested_rows) == 1 and "object_id" not in nested_rows[0], str(nested_rows))
 ok("overview_cache_entry", ov[1].get("Name") == "Bioadaptive Cache", str(ov[1] if len(ov) > 1 else None))
 
 dlg = e2.confirm_dialog()

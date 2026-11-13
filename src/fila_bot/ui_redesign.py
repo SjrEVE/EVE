@@ -8,7 +8,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from .ui_model import MODE_LABELS, MODES, UiModel
+from .ui_model import UiModel
 
 PALETTE = {
     "navy": "#173044",
@@ -44,9 +44,10 @@ def build_window(root: Any, model: UiModel, auto_close_ms: int = 0) -> dict[str,
 
     from fila_bot.version import short
 
-    root.title(f"fila-bot {short()} — EVE Operations")
-    root.geometry("1180x760")
-    root.minsize(960, 680)
+    model.mode = "abyss"
+    root.title(f"fila-bot {short()} — Abyss Operations")
+    root.geometry("870x600")
+    root.minsize(870, 600)
     root.configure(background=PALETTE["paper"])
     root.resizable(True, True)
 
@@ -56,7 +57,7 @@ def build_window(root: Any, model: UiModel, auto_close_ms: int = 0) -> dict[str,
     except tk.TclError:
         pass
     style.configure(
-        "Fila.TEntry", padding=(9, 7), fieldbackground="#fbfcfa",
+        "Fila.TEntry", padding=(6, 4), fieldbackground="#fbfcfa",
         foreground=PALETTE["ink"], bordercolor=PALETTE["line"],
     )
     style.map(
@@ -65,7 +66,7 @@ def build_window(root: Any, model: UiModel, auto_close_ms: int = 0) -> dict[str,
         foreground=[("disabled", PALETTE["muted"]), ("!disabled", PALETTE["ink"])],
     )
     style.configure(
-        "Fila.TCombobox", padding=(8, 6), fieldbackground="#fbfcfa",
+        "Fila.TCombobox", padding=(6, 4), fieldbackground="#fbfcfa",
         background="#fbfcfa", foreground=PALETTE["ink"], arrowcolor=PALETTE["navy"],
     )
     style.map(
@@ -79,17 +80,15 @@ def build_window(root: Any, model: UiModel, auto_close_ms: int = 0) -> dict[str,
     )
 
     root.grid_columnconfigure(0, weight=1)
-    root.grid_rowconfigure(4, weight=1)
+    root.grid_rowconfigure(4, weight=3)
+    root.grid_rowconfigure(5, weight=2)
 
-    mode_var = tk.StringVar(value=model.mode)
     sim_var = tk.BooleanVar(value=True)
     dry_var = tk.BooleanVar(value=True)
     hours_var = tk.StringVar(value="4")
     filament_var = tk.StringVar(value=model.filament)
-    mission_limit_var = tk.StringVar(value="")
-    run_limit_var = tk.StringVar(value="")
     engine_var = tk.StringVar(value=model.engine)
-    mode_summary = tk.StringVar(value=MODE_LABELS[model.mode])
+    run_limit_var = tk.StringVar(value="")
     safety_summary = tk.StringVar(value="SIM: no EVE connection · DRY: read-only")
     safety_detail = tk.StringVar(value="No game input will be sent in this setup.")
     state_var = tk.StringVar(value="IDLE")
@@ -106,31 +105,29 @@ def build_window(root: Any, model: UiModel, auto_close_ms: int = 0) -> dict[str,
     log_summary = tk.StringVar(value="No events yet")
     stats_summary = tk.StringVar(value="0 sessions · 0 completed · 0 crashes")
 
-    # Header: product identity, mode tabs, and explicit safety controls.
-    header = tk.Frame(root, bg=PALETTE["navy"], height=60)
+    # Header: product identity and explicit safety controls.
+    header = tk.Frame(root, bg=PALETTE["navy"], height=48)
     header.grid(row=0, column=0, sticky="ew")
     header.grid_propagate(False)
     header.grid_columnconfigure(1, weight=1)
 
     brand = tk.Frame(header, bg=PALETTE["navy"])
-    brand.grid(row=0, column=0, sticky="nsw", padx=(24, 22))
+    brand.grid(row=0, column=0, sticky="nsw", padx=(16, 14))
     mark = tk.Canvas(brand, width=25, height=25, bg=PALETTE["navy"],
                      highlightthickness=0, bd=0)
-    mark.pack(side="left", pady=17, padx=(0, 9))
+    mark.pack(side="left", pady=11, padx=(0, 7))
     mark.create_oval(3, 3, 22, 22, outline="#9bbab1", width=1)
     mark.create_line(1, 18, 23, 7, fill=PALETTE["gold"], width=1)
     mark.create_oval(15, 5, 19, 9, fill=PALETTE["gold"], outline="")
     tk.Label(
         brand, text="FILA / BOT", bg=PALETTE["navy"], fg="#f5f7f2",
-        font=(FONT, 12, "bold"),
-    ).pack(side="left", pady=17)
+        font=(FONT, 11, "bold"),
+    ).pack(side="left", pady=11)
 
-    mode_tabs = tk.Frame(header, bg=PALETTE["navy"])
-    mode_tabs.grid(row=0, column=1, sticky="w")
     mode_buttons: dict[str, Any] = {}
 
     safety_controls = tk.Frame(header, bg=PALETTE["navy"])
-    safety_controls.grid(row=0, column=2, sticky="e", padx=(12, 22))
+    safety_controls.grid(row=0, column=1, sticky="e", padx=(8, 16))
     sim_label = tk.StringVar(value="SIM  ON")
     dry_label = tk.StringVar(value="DRY  ON")
 
@@ -144,25 +141,16 @@ def build_window(root: Any, model: UiModel, auto_close_ms: int = 0) -> dict[str,
             highlightbackground="#59717e",
         )
 
-    live_warning = tk.Label(
-        root, text="LIVE INPUT: SIM and DRY are both off. Starting can send real clicks and keys to EVE.",
-        bg=PALETTE["red_bg"], fg=PALETTE["red"], anchor="w",
-        font=(FONT, 9, "bold"), padx=24, pady=8,
-        highlightthickness=1, highlightbackground="#efc4bf",
-    )
-    live_warning.grid(row=1, column=0, sticky="ew")
-    live_warning.grid_remove()
-
     heading = tk.Frame(root, bg=PALETTE["paper"])
-    heading.grid(row=2, column=0, sticky="ew", padx=28, pady=(8, 6))
+    heading.grid(row=2, column=0, sticky="ew", padx=16, pady=(5, 3))
     heading.grid_columnconfigure(0, weight=1)
     heading_title = tk.Label(
-        heading, text="Run control", bg=PALETTE["paper"], fg=PALETTE["ink"],
-        font=(FONT, 20, "bold"), anchor="w",
+        heading, text="Abyssal Deadspace", bg=PALETTE["paper"], fg=PALETTE["ink"],
+        font=(FONT, 16, "bold"), anchor="w",
     )
     heading_title.grid(row=0, column=0, sticky="w")
     tk.Label(
-        heading, text="Configure and supervise the selected mode", bg=PALETTE["paper"],
+        heading, text="Configure and monitor Abyss runs", bg=PALETTE["paper"],
         fg=PALETTE["muted"], font=(FONT, 9), anchor="e",
     ).grid(row=0, column=1, sticky="e")
 
@@ -177,22 +165,18 @@ def build_window(root: Any, model: UiModel, auto_close_ms: int = 0) -> dict[str,
             safety_summary.set("SIM: no EVE connection · DRY: read-only")
             safety_detail.set("No game input will be sent in this setup.")
             safety_bar.configure(bg=PALETTE["green"])
-            live_warning.grid_remove()
         elif sim:
             safety_summary.set("SIM: no EVE connection · DRY off")
             safety_detail.set("Simulation still prevents real EVE input.")
             safety_bar.configure(bg=PALETTE["green"])
-            live_warning.grid_remove()
         elif dry:
-            safety_summary.set("Client mode · read-only (DRY)")
-            safety_detail.set("EVE may be read, but input is disabled.")
+            safety_summary.set("DRY requested · GUI client access blocked")
+            safety_detail.set("This GUI runs SIM only; use fila_bot.cli for client read-only runs.")
             safety_bar.configure(bg=PALETTE["blue"])
-            live_warning.grid_remove()
         else:
-            safety_summary.set("LIVE INPUT ENABLED")
-            safety_detail.set("Real input to EVE is enabled; confirmation is required.")
+            safety_summary.set("LIVE INPUT requested · GUI live path blocked")
+            safety_detail.set("This GUI cannot access EVE; use fila_bot.cli with its client ownership lock.")
             safety_bar.configure(bg=PALETTE["red"])
-            live_warning.grid()
 
     sim_button = tk.Checkbutton(
         safety_controls, textvariable=sim_label, variable=sim_var,
@@ -209,85 +193,51 @@ def build_window(root: Any, model: UiModel, auto_close_ms: int = 0) -> dict[str,
     sim_button.pack(side="left", padx=(0, 7), pady=11)
     dry_button.pack(side="left", pady=11)
 
-    def sync_mode_fields(*_args: Any) -> None:
-        abyss = mode_var.get() == "abyss"
-        filament_entry.state(["!disabled"] if abyss else ["disabled"])
-        max_runs_entry.state(["!disabled"] if abyss else ["disabled"])
-        engine_combo.state(["!disabled", "readonly"] if abyss else ["!readonly", "disabled"])
-        max_missions_entry.state(["disabled"] if abyss else ["!disabled"])
-        mode_summary.set(MODE_LABELS.get(mode_var.get(), mode_var.get()))
-
-    def update_mode_tabs(*_args: Any) -> None:
-        for key, button in mode_buttons.items():
-            selected = mode_var.get() == key
-            button.configure(
-                bg=PALETTE["navy_hover"] if selected else PALETTE["navy"],
-                fg="#ffffff" if selected else "#c3d0d3",
-                highlightbackground=PALETTE["gold"] if selected else PALETTE["navy"],
-                highlightcolor=PALETTE["gold"] if selected else PALETTE["navy"],
-            )
-        sync_mode_fields()
-
-    for key in MODES:
-        button = tk.Radiobutton(
-            mode_tabs, text=MODE_LABELS[key], variable=mode_var, value=key,
-            indicatoron=False, relief="flat", bd=0, padx=13, pady=8,
-            bg=PALETTE["navy"], fg="#c3d0d3", selectcolor=PALETTE["navy_hover"],
-            activebackground=PALETTE["navy_hover"], activeforeground="#ffffff",
-            font=(FONT, 9, "bold"), takefocus=True,
-            highlightthickness=2, highlightbackground=PALETTE["navy"],
-            highlightcolor=PALETTE["gold"], command=update_mode_tabs,
-        )
-        button.pack(side="left", padx=(0, 4), pady=8)
-        mode_buttons[key] = button
-
-    # One scan line carries the live run state, actual phase, and safety summary.
-    status_row = tk.Frame(root, bg=PALETTE["paper"], height=64)
-    status_row.grid(row=3, column=0, sticky="ew", padx=28)
-    status_row.grid_propagate(False)
+    # One compact row carries state and phase; safety remains visible in the header and settings.
+    status_row = tk.Frame(root, bg=PALETTE["paper"])
+    status_row.grid(row=3, column=0, sticky="ew", padx=16)
     status_row.grid_columnconfigure(1, weight=1)
     state_badge = tk.Label(
         status_row, textvariable=state_var, bg="#dfe8e2", fg=PALETTE["green"],
         font=(FONT, 9, "bold"), padx=10, pady=6,
     )
-    state_badge.grid(row=0, column=0, sticky="w", pady=(9, 0), padx=(0, 13))
+    state_badge.grid(row=0, column=0, sticky="w", pady=5, padx=(0, 10))
     status_label = tk.Label(
         status_row, textvariable=status_copy, bg=PALETTE["paper"], fg=PALETTE["ink"],
-        font=(FONT, 10), anchor="w",
+        font=(FONT, 10), anchor="w", justify="left", wraplength=520,
     )
-    status_label.grid(row=0, column=1, sticky="ew", pady=(8, 0))
-    safety_label = tk.Label(
-        status_row, textvariable=safety_summary, bg=PALETTE["paper"],
-        fg=PALETTE["muted"], font=(FONT, 8), anchor="w",
-    )
-    safety_label.grid(row=1, column=1, sticky="w", pady=(0, 7))
-    tk.Label(
-        status_row, text="Phase", bg=PALETTE["paper"], fg=PALETTE["muted"],
+    status_label.grid(row=0, column=1, sticky="ew", pady=5)
+    phase_group = tk.Frame(status_row, bg=PALETTE["paper"])
+    phase_group.grid(row=0, column=2, sticky="e", padx=(12, 0), pady=5)
+    phase_label = tk.Label(
+        phase_group, text="Phase", bg=PALETTE["paper"], fg=PALETTE["muted"],
         font=(FONT, 8), anchor="e",
-    ).grid(row=0, column=2, sticky="e", padx=(16, 2), pady=(8, 0))
-    tk.Label(
-        status_row, textvariable=phase_var, bg=PALETTE["paper"],
+    )
+    phase_label.pack(side="left", padx=(0, 5))
+    phase_value_label = tk.Label(
+        phase_group, textvariable=phase_var, bg=PALETTE["paper"],
         fg=PALETTE["ink"], font=(DATA_FONT, 9, "bold"), anchor="e",
-    ).grid(row=1, column=2, sticky="e", padx=(16, 2), pady=(0, 7))
+    )
+    phase_value_label.pack(side="left")
 
     work = tk.Frame(root, bg=PALETTE["paper"])
-    work.grid(row=4, column=0, sticky="nsew", padx=28, pady=(0, 8))
-    work.grid_columnconfigure(0, weight=1, uniform="panels", minsize=400)
-    work.grid_columnconfigure(1, weight=1, uniform="panels", minsize=400)
+    work.grid(row=4, column=0, sticky="nsew", padx=16, pady=(0, 6))
+    work.grid_columnconfigure(0, weight=1, uniform="panels", minsize=350)
+    work.grid_columnconfigure(1, weight=1, uniform="panels", minsize=350)
     work.grid_rowconfigure(0, weight=1)
 
     def panel(parent: Any, column: int, title: str, subtitle_var: Any | None = None) -> Any:
         outer = tk.Frame(parent, bg=PALETTE["line"], padx=1, pady=1)
-        outer.grid(row=0, column=column, sticky="nsew", padx=(0, 8) if column == 0 else (8, 0))
-        inside = tk.Frame(outer, bg=PALETTE["white"], padx=17, pady=15)
+        outer.grid(row=0, column=column, sticky="nsew", padx=(0, 5) if column == 0 else (5, 0))
+        inside = tk.Frame(outer, bg=PALETTE["white"], padx=12, pady=10)
         inside.pack(fill="both", expand=True)
         inside.grid_columnconfigure(0, weight=1)
         head = tk.Frame(inside, bg=PALETTE["white"])
-        head.grid(row=0, column=0, sticky="ew", pady=(0, 13))
+        head.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         head.grid_columnconfigure(0, weight=1)
         tk.Label(
             head, text=title, bg=PALETTE["white"], fg=PALETTE["ink"],
-            font=(FONT, 11, "bold"), anchor="w",
+            font=(FONT, 10, "bold"), anchor="w",
         ).grid(row=0, column=0, sticky="w")
         if subtitle_var is not None:
             tk.Label(
@@ -299,7 +249,7 @@ def build_window(root: Any, model: UiModel, auto_close_ms: int = 0) -> dict[str,
         )
         return inside
 
-    settings = panel(work, 0, "Configure run", mode_summary)
+    settings = panel(work, 0, "Abyss setup")
     settings.grid_columnconfigure(0, weight=1)
     settings.grid_columnconfigure(1, weight=1)
 
@@ -307,11 +257,11 @@ def build_window(root: Any, model: UiModel, auto_close_ms: int = 0) -> dict[str,
         tk.Label(
             parent, text=text, bg=PALETTE["white"], fg=PALETTE["muted"],
             font=(FONT, 8), anchor="w",
-        ).grid(row=row, column=column, sticky="w", padx=(0, 10), pady=(0, 4))
+        ).grid(row=row, column=column, sticky="w", padx=(0, 6), pady=(0, 3))
 
     def make_entry(parent: Any, variable: Any, row: int, column: int, width: int = 20) -> Any:
         entry = ttk.Entry(parent, textvariable=variable, style="Fila.TEntry", width=width)
-        entry.grid(row=row + 1, column=column, sticky="ew", padx=(0, 10), pady=(0, 12))
+        entry.grid(row=row + 1, column=column, sticky="ew", padx=(0, 6), pady=(0, 7))
         return entry
 
     field_label(settings, "Filament", 2, 0)
@@ -321,38 +271,37 @@ def build_window(root: Any, model: UiModel, auto_close_ms: int = 0) -> dict[str,
         settings, textvariable=engine_var, values=("fsm", "bt"),
         state="readonly", style="Fila.TCombobox", width=12,
     )
-    engine_combo.grid(row=3, column=1, sticky="ew", padx=(0, 0), pady=(0, 12))
+    engine_combo.grid(row=3, column=1, sticky="ew", padx=(0, 0), pady=(0, 7))
 
-    field_label(settings, "Maximum session", 4, 0)
+    field_label(settings, "Maximum session (hours)", 4, 0)
     hours_entry = make_entry(settings, hours_var, 4, 0, 12)
-    field_label(settings, "Maximum missions", 4, 1)
-    max_missions_entry = make_entry(settings, mission_limit_var, 4, 1, 12)
-    field_label(settings, "Maximum runs", 6, 0)
-    max_runs_entry = make_entry(settings, run_limit_var, 6, 0, 12)
+    field_label(settings, "Maximum Abyss runs", 4, 1)
+    max_runs_entry = make_entry(settings, run_limit_var, 4, 1, 12)
     tk.Label(
-        settings, text="Set a limit only when this run needs one.",
+        settings, text="Optional run cap; leave blank for no limit.",
         bg=PALETTE["white"], fg=PALETTE["muted"], font=(FONT, 8), anchor="w",
-    ).grid(row=7, column=1, sticky="w", padx=(0, 4), pady=(0, 12))
+    ).grid(row=6, column=0, columnspan=2, sticky="w", padx=(0, 4), pady=(0, 10))
 
     safety_bar = tk.Frame(settings, bg=PALETTE["green"], height=3)
     tk.Frame(settings, bg=PALETTE["line"], height=1).grid(
-        row=8, column=0, columnspan=2, sticky="ew", pady=(1, 12)
+        row=7, column=0, columnspan=2, sticky="ew", pady=(1, 12)
     )
     tk.Label(
         settings, text="Safety mode", bg=PALETTE["white"], fg=PALETTE["ink"],
         font=(FONT, 9, "bold"), anchor="w",
-    ).grid(row=9, column=0, sticky="w")
-    tk.Label(
+    ).grid(row=8, column=0, sticky="w")
+    safety_detail_label = tk.Label(
         settings, textvariable=safety_detail, bg=PALETTE["white"],
-        fg=PALETTE["muted"], font=(FONT, 8), anchor="e",
-    ).grid(row=9, column=1, sticky="e")
-    safety_bar.grid(row=10, column=0, columnspan=2, sticky="ew", pady=(9, 0))
+        fg=PALETTE["muted"], font=(FONT, 8), anchor="w", justify="left", wraplength=420,
+    )
+    safety_detail_label.grid(row=9, column=0, columnspan=2, sticky="ew", pady=(4, 0))
+    safety_bar.grid(row=10, column=0, columnspan=2, sticky="ew", pady=(7, 0))
 
     # Operate panel: actual model state and controls, not decorative metrics.
     operate = panel(work, 1, "Operate", stats_summary)
     operate.grid_columnconfigure(0, weight=1)
     run_summary = tk.Frame(operate, bg=PALETTE["white"])
-    run_summary.grid(row=2, column=0, sticky="ew", pady=(0, 13))
+    run_summary.grid(row=2, column=0, sticky="ew", pady=(0, 8))
     run_summary.grid_columnconfigure(0, weight=1)
     tk.Label(
         run_summary, text="Run state", bg=PALETTE["white"], fg=PALETTE["muted"],
@@ -364,41 +313,41 @@ def build_window(root: Any, model: UiModel, auto_close_ms: int = 0) -> dict[str,
     ).grid(row=0, column=1, sticky="e", padx=(12, 0))
     tk.Label(
         run_summary, textvariable=state_var, bg=PALETTE["white"], fg=PALETTE["ink"],
-        font=(FONT, 22, "bold"), anchor="w",
+        font=(FONT, 16, "bold"), anchor="w",
     ).grid(row=1, column=0, sticky="w")
     tk.Label(
         run_summary, textvariable=elapsed_var, bg=PALETTE["white"], fg=PALETTE["ink"],
-        font=(DATA_FONT, 15, "bold"), anchor="e",
+        font=(DATA_FONT, 12, "bold"), anchor="e",
     ).grid(row=1, column=1, sticky="e", padx=(12, 0))
 
     stats_row = tk.Frame(operate, bg=PALETTE["white"])
-    stats_row.grid(row=3, column=0, sticky="ew", pady=(0, 12))
+    stats_row.grid(row=3, column=0, sticky="ew", pady=(0, 8))
     for col in range(3):
         stats_row.grid_columnconfigure(col, weight=1)
     for col, (label_var, value_var) in enumerate((
         (stat1_label, stat1_value), (stat2_label, stat2_value), (stat3_label, stat3_value),
     )):
-        cell = tk.Frame(stats_row, bg="#f6f8f5", padx=9, pady=8)
-        cell.grid(row=0, column=col, sticky="ew", padx=(0, 6) if col < 2 else (0, 0))
-        tk.Label(cell, textvariable=label_var, bg="#f6f8f5", fg=PALETTE["muted"],
+        cell = tk.Frame(stats_row, bg=PALETTE["white"], padx=4, pady=2)
+        cell.grid(row=0, column=col, sticky="ew", padx=(0, 4) if col < 2 else (0, 0))
+        tk.Label(cell, textvariable=label_var, bg=PALETTE["white"], fg=PALETTE["muted"],
                  font=(FONT, 8), anchor="w").pack(anchor="w")
-        tk.Label(cell, textvariable=value_var, bg="#f6f8f5", fg=PALETTE["ink"],
-                 font=(FONT, 11, "bold"), anchor="w").pack(anchor="w", pady=(3, 0))
+        tk.Label(cell, textvariable=value_var, bg=PALETTE["white"], fg=PALETTE["ink"],
+                 font=(FONT, 10, "bold"), anchor="w").pack(anchor="w", pady=(1, 0))
 
     trace_head = tk.Frame(operate, bg=PALETTE["white"])
-    trace_head.grid(row=4, column=0, sticky="ew", pady=(0, 5))
+    trace_head.grid(row=4, column=0, sticky="ew", pady=(0, 3))
     tk.Label(trace_head, text="Recent phase changes", bg=PALETTE["white"],
              fg=PALETTE["muted"], font=(FONT, 8), anchor="w").pack(side="left")
     tk.Label(trace_head, textvariable=history_note, bg=PALETTE["white"],
              fg=PALETTE["muted"], font=(FONT, 8), anchor="e").pack(side="right")
     trace_canvas = tk.Canvas(
-        operate, height=42, bg="#eef2ef", highlightthickness=1,
+        operate, height=40, bg="#eef2ef", highlightthickness=1,
         highlightbackground="#dce3de", bd=0,
     )
     trace_canvas.grid(row=5, column=0, sticky="ew")
 
     controls = tk.Frame(operate, bg=PALETTE["white"])
-    controls.grid(row=6, column=0, sticky="ew", pady=(13, 0))
+    controls.grid(row=6, column=0, sticky="ew", pady=(8, 0))
 
     def action_button(parent: Any, text: str, kind: str = "secondary", command: Any = None) -> Any:
         if kind == "primary":
@@ -410,7 +359,7 @@ def build_window(root: Any, model: UiModel, auto_close_ms: int = 0) -> dict[str,
         button = tk.Button(
             parent, text=text, command=command, bg=bg, fg=fg,
             activebackground=hover, activeforeground=fg, disabledforeground="#9aa4a0",
-            relief="flat", bd=0, padx=13, pady=8, font=(FONT, 9, "bold"),
+            relief="flat", bd=0, padx=9, pady=6, font=(FONT, 9, "bold"),
             takefocus=True, cursor="hand2", highlightthickness=1,
             highlightbackground=PALETTE["line"], highlightcolor=PALETTE["blue"],
         )
@@ -425,11 +374,11 @@ def build_window(root: Any, model: UiModel, auto_close_ms: int = 0) -> dict[str,
 
         button.bind("<Enter>", on_enter)
         button.bind("<Leave>", on_leave)
-        button.pack(side="left", padx=(0, 7))
+        button.pack(side="left", padx=(0, 4))
         return button
 
     def do_start() -> None:
-        model.mode = mode_var.get()
+        model.mode = "abyss"
         model.sim = bool(sim_var.get())
         model.dry = bool(dry_var.get())
         raw_hours = hours_var.get().strip()
@@ -449,35 +398,34 @@ def build_window(root: Any, model: UiModel, auto_close_ms: int = 0) -> dict[str,
             model.max_hours = None
         model.filament = filament_var.get().strip() or "Tranquil Exotic Filament"
         model.engine = engine_var.get() or "fsm"
-        model.max_missions = _int_or_none(mission_limit_var.get())
+        model.max_missions = None
         model.max_runs = _int_or_none(run_limit_var.get())
-        if not model.sim and not model.dry:
-            confirmed = messagebox.askyesno(
-                "Confirm live input",
-                f"Mode: {MODE_LABELS[model.mode]}\n\n"
-                "SIM and DRY are both off. fila-bot can send real clicks and keys to EVE.\n\n"
-                "Continue?",
+        if not model.sim:
+            messagebox.showwarning(
+                "Client mode unavailable",
+                "The GUI currently supports SIM only; it will not read or control EVE.\n\n"
+                "Use fila_bot.cli for client access, which enforces the ownership gate.",
                 parent=root,
             )
-            if not confirmed:
-                return
+            return
         model.start()
 
     start_button = action_button(controls, "Start", "primary", do_start)
     pause_button = action_button(controls, "Pause", "secondary", model.pause)
     stop_button = action_button(controls, "Stop", "secondary", model.stop)
     estop_button = action_button(controls, "E-STOP", "stop", model.estop)
-    tk.Label(
+    estop_hint = tk.Label(
         operate, text="E-STOP is available while a session is active.",
         bg=PALETTE["white"], fg=PALETTE["muted"], font=(FONT, 8), anchor="w",
-    ).grid(row=7, column=0, sticky="w", pady=(8, 0))
+    )
+    estop_hint.grid(row=7, column=0, sticky="w", pady=(8, 0))
 
     # Append-only event history, with a scroll bar and a useful empty state.
     log_outer = tk.Frame(root, bg=PALETTE["line"], padx=1, pady=1)
-    log_outer.grid(row=5, column=0, sticky="nsew", padx=28, pady=(0, 8))
+    log_outer.grid(row=5, column=0, sticky="nsew", padx=16, pady=(0, 5))
     log_outer.grid_columnconfigure(0, weight=1)
     log_outer.grid_rowconfigure(1, weight=1)
-    log_inside = tk.Frame(log_outer, bg=PALETTE["white"], padx=14, pady=8)
+    log_inside = tk.Frame(log_outer, bg=PALETTE["white"], padx=10, pady=6)
     log_inside.grid(row=0, column=0, sticky="nsew")
     log_inside.grid_columnconfigure(0, weight=1)
     log_header = tk.Frame(log_inside, bg=PALETTE["white"])
@@ -488,10 +436,10 @@ def build_window(root: Any, model: UiModel, auto_close_ms: int = 0) -> dict[str,
     tk.Label(log_header, textvariable=log_summary, bg=PALETTE["white"], fg=PALETTE["muted"],
              font=(FONT, 8), anchor="e").grid(row=0, column=1, sticky="e")
     log_text = tk.Text(
-        log_outer, height=5, wrap="none", relief="flat", bd=0,
+        log_outer, height=4, wrap="word", relief="flat", bd=0,
         bg="#fbfcfa", fg=PALETTE["ink"], insertbackground=PALETTE["blue"],
         selectbackground="#d8e5e1", selectforeground=PALETTE["ink"],
-        font=(DATA_FONT, 9), padx=14, pady=10, takefocus=True,
+        font=(DATA_FONT, 9), padx=10, pady=6, takefocus=True,
         highlightthickness=0, state="disabled",
     )
     log_text.grid(row=1, column=0, sticky="nsew")
@@ -505,11 +453,11 @@ def build_window(root: Any, model: UiModel, auto_close_ms: int = 0) -> dict[str,
     log_text.tag_configure("success", foreground=PALETTE["green"])
     log_text.tag_configure("empty", foreground=PALETTE["muted"], font=(FONT, 9))
     log_text.configure(state="normal")
-    log_text.insert("end", "No events yet. Start a SIM or DRY session to see phases and actions.", "empty")
+    log_text.insert("end", "No events yet. Start an Abyss SIM run to see phases and actions.", "empty")
     log_text.configure(state="disabled")
 
     footer = tk.Frame(root, bg=PALETTE["paper"])
-    footer.grid(row=6, column=0, sticky="ew", padx=28, pady=(0, 8))
+    footer.grid(row=6, column=0, sticky="ew", padx=16, pady=(0, 5))
     footer_hint = tk.Label(
         footer, text="Kill switch: Ctrl+Shift+Space", bg=PALETTE["paper"],
         fg=PALETTE["muted"], font=(FONT, 8), anchor="w",
@@ -519,6 +467,19 @@ def build_window(root: Any, model: UiModel, auto_close_ms: int = 0) -> dict[str,
         footer, text="State and history reflect UiModel", bg=PALETTE["paper"],
         fg=PALETTE["muted"], font=(FONT, 8), anchor="e",
     ).pack(side="right")
+
+    configuration_enabled: list[bool | None] = [None]
+
+    def set_configuration_enabled(enabled: bool) -> None:
+        if configuration_enabled[0] == enabled:
+            return
+        configuration_enabled[0] = enabled
+        state = "normal" if enabled else "disabled"
+        sim_button.configure(state=state)
+        dry_button.configure(state=state)
+        for entry in (hours_entry, filament_entry, max_runs_entry):
+            entry.state(["!disabled"] if enabled else ["disabled"])
+        engine_combo.configure(state="readonly" if enabled else "disabled")
 
     shown_last: list[str] = [""]
     log_has_placeholder = [True]
@@ -600,10 +561,8 @@ def build_window(root: Any, model: UiModel, auto_close_ms: int = 0) -> dict[str,
             )
         history_note.set(f"{count} recent changes")
 
-    mode_var.trace_add("write", update_mode_tabs)
     sim_var.trace_add("write", update_safety)
     dry_var.trace_add("write", update_safety)
-    update_mode_tabs()
     update_safety()
 
     def refresh_ui() -> None:
@@ -614,6 +573,7 @@ def build_window(root: Any, model: UiModel, auto_close_ms: int = 0) -> dict[str,
             return
         state = str(view.get("state") or "IDLE")
         phase = str(view.get("phase") or "—")
+        set_configuration_enabled(state == "IDLE")
         state_var.set(state.upper())
         phase_var.set(phase)
         elapsed_var.set(str(view.get("elapsed") or "0:00:00"))
@@ -622,7 +582,7 @@ def build_window(root: Any, model: UiModel, auto_close_ms: int = 0) -> dict[str,
         if banner:
             status_copy.set(banner)
         elif state == "IDLE":
-            status_copy.set("No active run")
+            status_copy.set("No active run" if sim_var.get() else safety_summary.get())
         elif detail:
             status_copy.set(detail)
         else:
@@ -634,6 +594,11 @@ def build_window(root: Any, model: UiModel, auto_close_ms: int = 0) -> dict[str,
             state_badge.configure(bg=PALETTE["amber_bg"], fg=PALETTE["amber"])
         elif state == "RUNNING":
             state_badge.configure(bg=PALETTE["green_bg"], fg=PALETTE["green"])
+        elif state == "IDLE" and not sim_var.get():
+            state_badge.configure(
+                bg=PALETTE["amber_bg"] if dry_var.get() else PALETTE["red_bg"],
+                fg=PALETTE["amber"] if dry_var.get() else PALETTE["red"],
+            )
         else:
             state_badge.configure(bg="#e1e7e3", fg=PALETTE["green"])
 
@@ -646,20 +611,12 @@ def build_window(root: Any, model: UiModel, auto_close_ms: int = 0) -> dict[str,
             f"{sessions} sessions · {completed} completed · {crashes} crashes"
             + (f" · Last: {last_reason}" if last_reason else "")
         )
-        if mode_var.get() == "abyss":
-            stat1_label.set("Runs")
-            stat1_value.set(str(view.get("runs", 0)))
-            stat2_label.set("Room")
-            stat2_value.set(str(view.get("room", 0)))
-            stat3_label.set("Filaments")
-            stat3_value.set(str(view.get("filaments", "—")))
-        else:
-            stat1_label.set("Missions")
-            stat1_value.set(str(view.get("runs", 0)))
-            stat2_label.set("Declined")
-            stat2_value.set(str(view.get("declined", 0)))
-            stat3_label.set("Time")
-            stat3_value.set(str(view.get("elapsed", "0:00:00")))
+        stat1_label.set("Abyss runs")
+        stat1_value.set(str(view.get("runs", 0)))
+        stat2_label.set("Room")
+        stat2_value.set(str(view.get("room", 0)))
+        stat3_label.set("Filaments")
+        stat3_value.set(str(view.get("filaments", "—")))
 
         start_button.configure(state="normal" if view.get("can_start") else "disabled")
         pause_button.configure(text=str(view.get("pause_label") or "Pause"))
@@ -683,23 +640,27 @@ def build_window(root: Any, model: UiModel, auto_close_ms: int = 0) -> dict[str,
         root.after(auto_close_ms, on_close)
 
     return {
-        "mode_var": mode_var,
         "mode_buttons": mode_buttons,
         "sim_var": sim_var,
         "dry_var": dry_var,
         "safety_summary": safety_summary,
         "safety_detail": safety_detail,
-        "live_warning": live_warning,
+        "safety_detail_label": safety_detail_label,
+        "status_copy": status_copy,
         "estop_button": estop_button,
         "filament_entry": filament_entry,
         "max_runs_entry": max_runs_entry,
+        "hours_entry": hours_entry,
+        "start_button": start_button,
         "engine_combo": engine_combo,
-        "max_missions_entry": max_missions_entry,
-        "mode_summary": mode_summary,
         "operate_panel": operate,
+        "trace_canvas": trace_canvas,
+        "estop_hint": estop_hint,
         "heading_title": heading_title,
         "footer_hint": footer_hint,
+        "phase_value_label": phase_value_label,
         "sim_button": sim_button,
+        "dry_button": dry_button,
         "refresh": refresh_ui,
     }
 

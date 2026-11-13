@@ -248,6 +248,12 @@ class Eye:
                 return wins[0]
         return None
 
+    @staticmethod
+    def _object_id_from_attrs(attrs: dict[str, Any]) -> int | None:
+        """Read the node's direct itemID; nested `_sr` metadata is not identity."""
+        value = attrs.get("itemID")
+        return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
+
     def overview_entries(self) -> list[dict[str, Any]]:
         """Danh sách overview entries. Ground 2026-11-09 (TQ client):
         OverviewWindow → OverviewScrollEntry → OverviewLabel (text ở attrs['_text']).
@@ -285,6 +291,9 @@ class Eye:
                 if first.endswith((" m", " km", " au")):
                     rec["Distance"] = rec["texts_left_to_right"][0].strip()
             rec["center"] = self.abs_center(entry)
+            item_id = self._object_id_from_attrs(entry.get("attrs", {}) or {})
+            if item_id is not None:
+                rec["object_id"] = item_id
             out.append(rec)
         return out
 
@@ -345,25 +354,31 @@ class Eye:
         gets [] and `targets_observable()` says False — never a silent lie.
         """
         out: list[dict[str, Any]] = []
-        for node in self._find_by_type("TargetInBar", select_many=True) or []:
+
+        def target_record(node: dict[str, Any]) -> dict[str, Any]:
             texts = [t.strip() for t in self._texts_of_node(node) if t and t.strip()]
-            active = bool(self._find_by_type("ActiveTargetOnBracket", root=node,
-                                             select_many=True))
-            out.append({"texts": texts[:6],
-                        "name": texts[0] if texts else None,
-                        "is_active": active,
-                        "center": self.abs_center(node)})
+            descendants = list(self.walk(node))
+            legacy_active = any(self._find_by_type(
+                "ActiveTargetOnBracket", root=node, select_many=True))
+            states = [((n.get("attrs") or {}).get("state")) for n in descendants
+                      if n.get("type") == "ActiveTargetIndicator"]
+            active = True if legacy_active or 1 in states else False if 2 in states else None
+            attrs = node.get("attrs", {}) or {}
+            object_id = self._object_id_from_attrs(attrs)
+            return {"texts": texts[:6], "name": texts[0] if texts else None,
+                    "object_id": object_id, "is_active": active,
+                    "center": self.abs_center(node)}
+
+        for node in self._find_by_type("TargetInBar", select_many=True) or []:
+            out.append(target_record(node))
         if out:
             return out
+
+        # The actual client source defines TargetHealthBars as a named Container
+        # with its own itemID. This proves a locked target exists, but without its
+        # parent ActiveTargetIndicator we do not claim which target is active.
         for node in self._find_by_name("targetHealthBars", select_many=True) or []:
-            texts = [t.strip() for t in self._texts_of_node(node) if t and t.strip()]
-            out.append({"texts": texts[:6],
-                        "name": texts[0] if texts else None,
-                        # Without ActiveTargetOnBracket we cannot tell WHICH of
-                        # several locked targets the drones would attack, so the
-                        # active flag stays None (unknown) rather than a guess.
-                        "is_active": None,
-                        "center": self.abs_center(node)})
+            out.append(target_record(node))
         return out
 
     def targets_observable(self) -> bool:
